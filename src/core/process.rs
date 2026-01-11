@@ -140,3 +140,36 @@ impl ProcessManager {
         signal::kill(Pid::from_raw(pid), None).is_ok()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_is_process_alive() {
+        // 测试当前进程
+        let current_pid = std::process::id() as i32;
+        assert!(ProcessManager::is_process_alive(current_pid));
+
+        // 测试不存在的进程
+        assert!(!ProcessManager::is_process_alive(999999));
+    }
+
+    #[test]
+    fn test_read_pid_nonexistent() {
+        let result = ProcessManager::read_pid();
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_stop_when_no_node_running() {
+        let result = ProcessManager::stop(false);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_stop_force_when_no_node_running() {
+        let result = ProcessManager::stop(true);
+        assert!(result.is_err());
+    }
+}

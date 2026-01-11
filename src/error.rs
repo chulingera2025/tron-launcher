@@ -58,3 +58,78 @@ pub enum TronCtlError {
 }
 
 pub type Result<T> = std::result::Result<T, TronCtlError>;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_insufficient_permissions_error() {
+        let err = TronCtlError::InsufficientPermissions;
+        assert_eq!(err.to_string(), "权限不足: 需要 root 权限");
+    }
+
+    #[test]
+    fn test_incompatible_java_version_error() {
+        let err = TronCtlError::IncompatibleJavaVersion {
+            required: "1.8".to_string(),
+            current: "11".to_string(),
+        };
+        assert!(err.to_string().contains("1.8"));
+        assert!(err.to_string().contains("11"));
+    }
+
+    #[test]
+    fn test_insufficient_memory_error() {
+        let err = TronCtlError::InsufficientMemory {
+            recommended: 32,
+            current: 16,
+        };
+        assert!(err.to_string().contains("32"));
+        assert!(err.to_string().contains("16"));
+    }
+
+    #[test]
+    fn test_node_already_running_error() {
+        let err = TronCtlError::NodeAlreadyRunning(12345);
+        assert!(err.to_string().contains("12345"));
+    }
+
+    #[test]
+    fn test_md5_mismatch_error() {
+        let err = TronCtlError::Md5Mismatch {
+            expected: "abc123".to_string(),
+            actual: "def456".to_string(),
+        };
+        assert!(err.to_string().contains("abc123"));
+        assert!(err.to_string().contains("def456"));
+    }
+
+    #[test]
+    fn test_download_failed_error() {
+        let err = TronCtlError::DownloadFailed("网络超时".to_string());
+        assert!(err.to_string().contains("网络超时"));
+    }
+
+    #[test]
+    fn test_config_error() {
+        let err = TronCtlError::ConfigError("配置无效".to_string());
+        assert!(err.to_string().contains("配置无效"));
+    }
+
+    #[test]
+    fn test_io_error_conversion() {
+        let io_err = std::io::Error::new(std::io::ErrorKind::NotFound, "file not found");
+        let err: TronCtlError = io_err.into();
+        assert!(err.to_string().contains("IO 错误"));
+    }
+
+    #[test]
+    fn test_result_type() {
+        let ok: Result<i32> = Ok(42);
+        assert_eq!(ok.unwrap(), 42);
+
+        let err: Result<i32> = Err(TronCtlError::NodeNotRunning);
+        assert!(err.is_err());
+    }
+}

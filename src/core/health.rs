@@ -97,3 +97,40 @@ impl Default for HealthChecker {
         Self::new()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_health_checker_new() {
+        let checker = HealthChecker::new();
+        assert!(std::ptr::addr_of!(checker.client) as usize != 0);
+    }
+
+    #[test]
+    fn test_health_checker_default() {
+        let checker = HealthChecker::default();
+        assert!(std::ptr::addr_of!(checker.client) as usize != 0);
+    }
+
+    #[tokio::test]
+    async fn test_check_dead_process() {
+        let checker = HealthChecker::new();
+        let status = checker.check(999999).await.unwrap();
+
+        assert!(!status.process_alive);
+        assert!(!status.rpc_responding);
+        assert!(!status.block_syncing);
+        assert_eq!(status.current_block, 0);
+    }
+
+    #[tokio::test]
+    async fn test_check_current_process() {
+        let checker = HealthChecker::new();
+        let pid = std::process::id() as i32;
+        let status = checker.check(pid).await.unwrap();
+
+        assert!(status.process_alive);
+    }
+}

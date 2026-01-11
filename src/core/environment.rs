@@ -81,3 +81,34 @@ impl EnvironmentChecker {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_check_memory_executes() {
+        let result = EnvironmentChecker::check_memory();
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_check_disk_space_executes() {
+        let result = EnvironmentChecker::check_disk_space();
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_check_permissions_consistency() {
+        let result1 = EnvironmentChecker::check_permissions();
+        let result2 = EnvironmentChecker::check_permissions();
+        assert_eq!(result1.is_ok(), result2.is_ok());
+    }
+
+    #[test]
+    fn test_check_java_version_consistency() {
+        let result1 = EnvironmentChecker::check_java_version();
+        let result2 = EnvironmentChecker::check_java_version();
+        assert_eq!(result1.is_ok(), result2.is_ok());
+    }
+}

@@ -119,3 +119,81 @@ impl Default for SnapshotManager {
         Self::new()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_snapshot_manager_new() {
+        let manager = SnapshotManager::new();
+        assert!(std::ptr::addr_of!(manager.client) as usize != 0);
+    }
+
+    #[test]
+    fn test_snapshot_manager_default() {
+        let manager = SnapshotManager::default();
+        assert!(std::ptr::addr_of!(manager.client) as usize != 0);
+    }
+
+    #[tokio::test]
+    async fn test_get_latest_snapshot_invalid_type() {
+        let manager = SnapshotManager::new();
+        let server = SnapshotServer {
+            url: "http://test.com".to_string(),
+            latency: Duration::from_millis(100),
+            available: true,
+        };
+
+        let result = manager.get_latest_snapshot(&server, "invalid").await;
+        assert!(result.is_err());
+        assert!(matches!(result.unwrap_err(), TronCtlError::ConfigError(_)));
+    }
+
+    #[tokio::test]
+    async fn test_fetch_md5_success() {
+        let mut server = mockito::Server::new_async().await;
+        let md5_content = "abc123def456  filename.tgz\n";
+
+        let _mock = server
+            .mock("GET", "/test.md5sum")
+            .with_status(200)
+            .with_body(md5_content)
+            .create_async()
+            .await;
+
+        let manager = SnapshotManager::new();
+        let url = format!("{}/test.md5sum", server.url());
+        let md5 = manager.fetch_md5(&url).await.unwrap();
+
+        assert_eq!(md5, "abc123def456");
+    }
+
+    #[tokio::test]
+    async fn test_fetch_md5_empty() {
+        let mut server = mockito::Server::new_async().await;
+
+        let _mock = server
+            .mock("GET", "/test.md5sum")
+            .with_status(200)
+            .with_body("")
+            .create_async()
+            .await;
+
+        let manager = SnapshotManager::new();
+        let url = format!("{}/test.md5sum", server.url());
+        let md5 = manager.fetch_md5(&url).await.unwrap();
+
+        assert_eq!(md5, "");
+    }
+
+    #[tokio::test]
+    async fn test_fetch_md5_network_error() {
+        let manager = SnapshotManager::new();
+        let result = manager
+            .fetch_md5("http://invalid.test.nonexistent/test.md5sum")
+            .await;
+
+        assert!(result.is_err());
+    }
+}

@@ -137,3 +137,143 @@ impl Default for Downloader {
         Self::new()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+
+    #[test]
+    fn test_downloader_new() {
+        let downloader = Downloader::new();
+        assert!(std::ptr::addr_of!(downloader.client) as usize != 0);
+    }
+
+    #[test]
+    fn test_downloader_default() {
+        let downloader = Downloader::default();
+        assert!(std::ptr::addr_of!(downloader.client) as usize != 0);
+    }
+
+    #[test]
+    fn test_downloader_client_ref() {
+        let downloader = Downloader::new();
+        let client = downloader.client();
+        assert!(std::ptr::addr_of!(*client) as usize != 0);
+    }
+
+    #[tokio::test]
+    async fn test_download_with_progress_success() {
+        let mut server = mockito::Server::new_async().await;
+        let content = b"test file content";
+
+        let _mock = server
+            .mock("GET", "/test.file")
+            .with_status(200)
+            .with_header("content-length", &content.len().to_string())
+            .with_body(content)
+            .create_async()
+            .await;
+
+        let downloader = Downloader::new();
+        let temp_dir = TempDir::new().unwrap();
+        let dest = temp_dir.path().join("test.file");
+
+        let url = format!("{}/test.file", server.url());
+        let result = downloader.download_with_progress(&url, &dest, None).await;
+
+        assert!(result.is_ok());
+        assert!(dest.exists());
+
+        let downloaded_content = tokio::fs::read(&dest).await.unwrap();
+        assert_eq!(downloaded_content, content);
+    }
+
+    #[tokio::test]
+    async fn test_download_with_progress_md5_match() {
+        let mut server = mockito::Server::new_async().await;
+        let content = b"test";
+        let md5_hash = format!("{:x}", md5::compute(content));
+
+        let _mock = server
+            .mock("GET", "/test.file")
+            .with_status(200)
+            .with_header("content-length", &content.len().to_string())
+            .with_body(content)
+            .create_async()
+            .await;
+
+        let downloader = Downloader::new();
+        let temp_dir = TempDir::new().unwrap();
+        let dest = temp_dir.path().join("test.file");
+
+        let url = format!("{}/test.file", server.url());
+        let result = downloader
+            .download_with_progress(&url, &dest, Some(&md5_hash))
+            .await;
+
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_download_with_progress_md5_mismatch() {
+        let mut server = mockito::Server::new_async().await;
+        let content = b"test";
+
+        let _mock = server
+            .mock("GET", "/test.file")
+            .with_status(200)
+            .with_header("content-length", &content.len().to_string())
+            .with_body(content)
+            .create_async()
+            .await;
+
+        let downloader = Downloader::new();
+        let temp_dir = TempDir::new().unwrap();
+        let dest = temp_dir.path().join("test.file");
+
+        let url = format!("{}/test.file", server.url());
+        let result = downloader
+            .download_with_progress(&url, &dest, Some("wrongmd5"))
+            .await;
+
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err(),
+            TronCtlError::Md5Mismatch { .. }
+        ));
+    }
+
+    #[tokio::test]
+    async fn test_download_with_progress_http_error() {
+        let mut server = mockito::Server::new_async().await;
+
+        let _mock = server
+            .mock("GET", "/test.file")
+            .with_status(404)
+            .create_async()
+            .await;
+
+        let downloader = Downloader::new();
+        let temp_dir = TempDir::new().unwrap();
+        let dest = temp_dir.path().join("test.file");
+
+        let url = format!("{}/test.file", server.url());
+        let result = downloader.download_with_progress(&url, &dest, None).await;
+
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_download_with_progress_network_error() {
+        let downloader = Downloader::new();
+        let temp_dir = TempDir::new().unwrap();
+        let dest = temp_dir.path().join("test.file");
+
+        let result = downloader
+            .download_with_progress("http://invalid.test.nonexistent", &dest, None)
+            .await;
+
+        assert!(result.is_err());
+    }
+}

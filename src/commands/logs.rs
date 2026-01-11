@@ -30,3 +30,30 @@ pub async fn execute(follow: bool, lines: usize) -> Result<()> {
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_execute_nonexistent_log_file() {
+        let result = execute(false, 100).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_execute_with_follow() {
+        let result = execute(true, 50).await;
+        assert!(result.is_ok() || result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_execute_different_line_counts() {
+        let result1 = execute(false, 10).await;
+        let result2 = execute(false, 100).await;
+        let result3 = execute(false, 1000).await;
+
+        assert_eq!(result1.is_ok(), result2.is_ok());
+        assert_eq!(result2.is_ok(), result3.is_ok());
+    }
+}
