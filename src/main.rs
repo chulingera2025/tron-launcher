@@ -1,5 +1,6 @@
 mod cli;
 mod constants;
+mod core;
 mod error;
 mod models;
 mod utils;
