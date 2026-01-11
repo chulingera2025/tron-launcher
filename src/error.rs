@@ -48,7 +48,10 @@ pub enum TronCtlError {
     JsonError(#[from] serde_json::Error),
 
     #[error("TOML 解析错误: {0}")]
-    TomlError(#[from] toml::de::Error),
+    TomlDeError(#[from] toml::de::Error),
+
+    #[error("TOML 序列化错误: {0}")]
+    TomlSerError(#[from] toml::ser::Error),
 
     #[error("其他错误: {0}")]
     Other(#[from] anyhow::Error),
