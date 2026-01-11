@@ -1,3 +1,7 @@
+mod cli;
+mod constants;
+mod error;
+
 fn main() {
-    println!("Hello, world!");
+    println!("tronctl - Tron FullNode 编排器");
 }
