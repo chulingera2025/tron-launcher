@@ -23,6 +23,7 @@ pub struct BlockHeader {
 #[derive(Debug, Clone, Deserialize)]
 pub struct BlockRawData {
     pub number: u64,
+    #[allow(dead_code)]
     pub timestamp: i64,
 }
 

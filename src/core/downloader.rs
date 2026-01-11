@@ -127,6 +127,7 @@ impl Downloader {
     }
 
     /// 获取 HTTP 客户端引用（供其他模块使用）
+    #[allow(dead_code)]
     pub fn client(&self) -> &Client {
         &self.client
     }

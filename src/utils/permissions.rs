@@ -8,6 +8,7 @@ pub fn check_root() -> Result<()> {
     Ok(())
 }
 
+#[allow(dead_code)]
 pub fn is_root() -> bool {
     Uid::effective().is_root()
 }

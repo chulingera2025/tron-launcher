@@ -9,6 +9,7 @@ pub async fn ensure_dir_exists(path: &Path) -> Result<()> {
     Ok(())
 }
 
+#[allow(dead_code)]
 pub async fn ensure_parent_exists(file_path: &Path) -> Result<()> {
     if let Some(parent) = file_path.parent() {
         ensure_dir_exists(parent).await?;

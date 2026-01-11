@@ -8,12 +8,15 @@ pub enum TronCtlError {
     #[error("Java 版本不兼容: 需要 Java {required}, 当前 {current}")]
     IncompatibleJavaVersion { required: String, current: String },
 
+    #[allow(dead_code)]
     #[error("内存不足: 推荐 {recommended}GB, 当前 {current}GB")]
     InsufficientMemory { recommended: u64, current: u64 },
 
+    #[allow(dead_code)]
     #[error("磁盘空间不足: 推荐 {recommended}GB, 当前 {current}GB")]
     InsufficientDisk { recommended: u64, current: u64 },
 
+    #[allow(dead_code)]
     #[error("节点未初始化: 请先运行 'tronctl init'")]
     NodeNotInitialized,
 

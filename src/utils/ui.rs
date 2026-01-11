@@ -11,6 +11,7 @@ pub fn create_download_progress_bar(total_size: u64) -> ProgressBar {
     pb
 }
 
+#[allow(dead_code)]
 pub fn create_spinner(message: &str) -> ProgressBar {
     let pb = ProgressBar::new_spinner();
     pb.set_message(message.to_string());

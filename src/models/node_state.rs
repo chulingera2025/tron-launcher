@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum NodeStatus {
     NotInitialized,
@@ -8,6 +9,7 @@ pub enum NodeStatus {
     Unhealthy { pid: i32, reason: String },
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NodeState {
     pub status: NodeStatus,
