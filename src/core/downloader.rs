@@ -130,6 +130,66 @@ impl Downloader {
     pub fn client(&self) -> &Client {
         &self.client
     }
+
+    /// 流式下载并解压 .tar.gz 文件
+    pub async fn download_and_extract_tgz(
+        &self,
+        url: &str,
+        dest_dir: &Path,
+        _expected_md5: Option<&str>,
+    ) -> Result<()> {
+        use async_compression::tokio::bufread::GzipDecoder;
+        use futures::StreamExt;
+        use tokio_util::io::StreamReader;
+
+        info!("开始流式下载并解压: {} -> {:?}", url, dest_dir);
+
+        let response = self.client.get(url).send().await?;
+
+        if !response.status().is_success() {
+            return Err(TronCtlError::DownloadFailed(format!(
+                "HTTP 状态码: {}",
+                response.status()
+            )));
+        }
+
+        let total_size = response.content_length().unwrap_or(0);
+        let pb = ui::create_download_progress_bar(total_size);
+        let pb_clone = pb.clone();
+
+        // 将字节流转换为 AsyncRead，同时更新进度条
+        let stream = response.bytes_stream().map(move |result| {
+            if let Ok(chunk) = &result {
+                pb_clone.inc(chunk.len() as u64);
+            }
+            result.map_err(std::io::Error::other)
+        });
+
+        let reader = StreamReader::new(stream);
+
+        // Gzip 解压器
+        let gzip_decoder = GzipDecoder::new(tokio::io::BufReader::new(reader));
+
+        // 在独立线程中进行 tar 解压（tar 是阻塞操作）
+        let dest_dir = dest_dir.to_path_buf();
+        let extract_task = tokio::task::spawn_blocking(move || {
+            use tokio_util::io::SyncIoBridge;
+
+            let sync_reader = SyncIoBridge::new(gzip_decoder);
+            let mut archive = tar::Archive::new(sync_reader);
+            archive.unpack(&dest_dir)?;
+            Ok::<_, std::io::Error>(())
+        });
+
+        extract_task.await.map_err(|e| {
+            TronCtlError::Other(anyhow::anyhow!("解压任务失败: {}", e))
+        })??;
+
+        pb.finish_with_message("下载并解压完成");
+
+        info!("流式解压完成");
+        Ok(())
+    }
 }
 
 impl Default for Downloader {

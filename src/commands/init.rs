@@ -4,7 +4,6 @@ use crate::error::Result;
 use crate::models::TronCtlConfig;
 use crate::utils::fs;
 use std::path::{Path, PathBuf};
-use tokio::process::Command;
 use tracing::{info, warn};
 
 pub async fn execute(
@@ -46,14 +45,17 @@ pub async fn execute(
         let metadata = snapshot_mgr.get_latest_snapshot(&server, &snapshot_type).await?;
 
         info!("下载快照: {} ({} GB)", metadata.date, metadata.size_gb);
-        info!("这可能需要较长时间，请耐心等待...");
+        info!("正在流式下载并解压，请耐心等待...");
 
-        let snapshot_file = PathBuf::from("/tmp/tron-snapshot.tgz");
+        let data_dir = PathBuf::from(DATA_DIR).join("data");
+        fs::ensure_dir_exists(&data_dir).await?;
+
+        // 流式下载并解压，无需中间文件
         downloader
-            .download_with_progress(&metadata.download_url, &snapshot_file, Some(&metadata.md5))
+            .download_and_extract_tgz(&metadata.download_url, &data_dir, Some(&metadata.md5))
             .await?;
 
-        extract_snapshot(&snapshot_file).await?;
+        info!("快照下载并解压完成");
     }
 
     // 6. 保存配置
@@ -80,7 +82,7 @@ async fn create_directories() -> Result<()> {
 }
 
 async fn generate_default_config() -> Result<()> {
-    info!("生成默认配置文件...");
+    info!("下载默认配置文件...");
 
     let config_path = PathBuf::from(CONFIG_DIR).join(NODE_CONFIG);
 
@@ -89,80 +91,23 @@ async fn generate_default_config() -> Result<()> {
         return Ok(());
     }
 
-    // 使用官方默认配置的简化版本
-    // 实际应该从 GitHub 下载，这里简化处理
-    let default_config = r#"net {
-  type = mainnet
-}
+    // 从 GitHub 下载官方配置文件
+    let config_url = "https://raw.githubusercontent.com/tronprotocol/java-tron/master/framework/src/main/resources/config.conf";
 
-storage {
-  db.version = 2,
-  db.engine = "LEVELDB",
-  db.directory = "database",
-  index.directory = "index",
-  transHistory.switch = "on"
-}
+    let client = reqwest::Client::new();
+    let response = client.get(config_url).send().await?;
 
-node.discovery = {
-  enable = true
-  persist = true
-}
-
-node {
-  p2p {
-    version = 11111
-  }
-
-  active = [
-    "39.107.80.135:18888",
-    "47.254.16.55:18888",
-    "47.254.18.49:18888"
-  ]
-
-  listen.port = 18888
-
-  http {
-    fullNodePort = 8090
-    solidityPort = 8091
-  }
-
-  rpc {
-    port = 50051
-  }
-}
-"#;
-
-    tokio::fs::write(&config_path, default_config).await?;
-    info!("配置文件已生成: {:?}", config_path);
-
-    Ok(())
-}
-
-async fn extract_snapshot(snapshot_file: &Path) -> Result<()> {
-    info!("解压快照数据...");
-
-    let data_dir = PathBuf::from(DATA_DIR).join("data");
-    fs::ensure_dir_exists(&data_dir).await?;
-
-    let output = Command::new("tar")
-        .arg("-xzf")
-        .arg(snapshot_file)
-        .arg("-C")
-        .arg(&data_dir)
-        .arg("--strip-components=1")
-        .output()
-        .await?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(crate::error::TronCtlError::Other(anyhow::anyhow!(
-            "解压失败: {}",
-            stderr
+    if !response.status().is_success() {
+        return Err(crate::error::TronCtlError::DownloadFailed(format!(
+            "下载配置文件失败: HTTP {}",
+            response.status()
         )));
     }
 
-    tokio::fs::remove_file(snapshot_file).await?;
-    info!("快照解压完成");
+    let config_content = response.text().await?;
+    tokio::fs::write(&config_path, config_content).await?;
+
+    info!("配置文件已下载: {:?}", config_path);
 
     Ok(())
 }
