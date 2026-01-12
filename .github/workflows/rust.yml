@@ -3,25 +3,25 @@
 # This workflow performs the following actions:
 # 1.  On every push to `main` or pull request to `main`:
 #     - Checks code formatting (`cargo fmt`).
-#     - Lints the code (`cargo clippy`).
-#     - Runs tests (`cargo test`).
+#     - Lints the code (`cross clippy`).
+#     - Runs tests (`cross test`).
 # 2.  When a tag in the format `v*.*.*` (e.g., `v1.0.0`) is pushed:
-#     - Builds a statically linked binary for Linux (`x86_64-unknown-linux-musl`).
+#     - Builds a statically linked binary for Linux (`x86_64-unknown-linux-musl`) using `cross`.
 #     - Creates a GitHub Release and uploads the binary as an asset.
 #
-# It uses `watinem/rust-cache` to speed up the process by caching dependencies.
+# It uses `Swatinem/rust-cache` to speed up the process and `cross` for robust cross-compilation.
 
 name: Rust CI/CD
 
 on:
   push:
     branches:
-      - main
+      - master
     tags:
       - 'v*.*.*'
   pull_request:
     branches:
-      - main
+      - master
 
 env:
   CARGO_TERM_COLOR: always
@@ -41,6 +41,9 @@ jobs:
           toolchain: stable
           targets: x86_64-unknown-linux-musl
 
+      - name: Install cross
+        run: cargo install cross
+
       - name: Cache dependencies
         uses: Swatinem/rust-cache@v2
         with:
@@ -50,10 +53,10 @@ jobs:
         run: cargo fmt --all -- --check
 
       - name: Lint code (Clippy)
-        run: cargo clippy --target x86_64-unknown-linux-musl -- -D warnings
+        run: cross clippy --target x86_64-unknown-linux-musl -- -D warnings
 
       - name: Run tests
-        run: cargo test --all --target x86_64-unknown-linux-musl
+        run: cross test --all --target x86_64-unknown-linux-musl
 
   release:
     name: Create Release
@@ -72,13 +75,16 @@ jobs:
           toolchain: stable
           targets: x86_64-unknown-linux-musl
 
+      - name: Install cross
+        run: cargo install cross
+
       - name: Cache dependencies
         uses: Swatinem/rust-cache@v2
         with:
           key: "linux-musl"
 
       - name: Build for release
-        run: cargo build --release --target x86_64-unknown-linux-musl
+        run: cross build --release --target x86_64-unknown-linux-musl
 
       - name: Package for release
         id: package # Give this step an ID to reference its output

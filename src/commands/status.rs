@@ -16,10 +16,7 @@ pub async fn execute(verbose: bool) -> Result<()> {
 
             println!("状态: 运行中");
             println!("PID: {}", pid);
-            println!(
-                "进程存活: {}",
-                if health.process_alive { "✓" } else { "✗" }
-            );
+            println!("进程存活: {}", if health.process_alive { "✓" } else { "✗" });
             println!(
                 "RPC 响应: {}",
                 if health.rpc_responding { "✓" } else { "✗" }

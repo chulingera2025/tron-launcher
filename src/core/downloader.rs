@@ -4,7 +4,7 @@ use futures::StreamExt;
 use reqwest::Client;
 use std::path::Path;
 use tokio::fs::File;
-use tokio::io::{AsyncWriteExt, AsyncSeekExt};
+use tokio::io::{AsyncSeekExt, AsyncWriteExt};
 use tracing::{debug, info, warn};
 
 pub struct Downloader {
@@ -208,9 +208,7 @@ impl Downloader {
                     .header("Range", range)
                     .send()
                     .await
-                    .map_err(|e| {
-                        TronCtlError::DownloadFailed(format!("分块下载失败: {}", e))
-                    })?;
+                    .map_err(|e| TronCtlError::DownloadFailed(format!("分块下载失败: {}", e)))?;
 
                 // 206 Partial Content 或 200 OK 都可以接受
                 if !response.status().is_success() && response.status().as_u16() != 206 {
@@ -325,8 +323,8 @@ impl Downloader {
         // 在独立线程中进行 tar 解压（tar 是阻塞操作）
         let dest_dir = dest_dir_canonical;
         let extract_task = tokio::task::spawn_blocking(move || {
-            use tokio_util::io::SyncIoBridge;
             use std::path::Component;
+            use tokio_util::io::SyncIoBridge;
 
             let sync_reader = SyncIoBridge::new(gzip_decoder);
             let mut archive = tar::Archive::new(sync_reader);
@@ -361,9 +359,7 @@ impl Downloader {
                 // 对于尚不存在的文件，验证其父目录
                 let path_to_check = if full_path.exists() {
                     full_path.canonicalize().map_err(|e| {
-                        std::io::Error::other(
-                            format!("无法规范化路径 {:?}: {}", full_path, e),
-                        )
+                        std::io::Error::other(format!("无法规范化路径 {:?}: {}", full_path, e))
                     })?
                 } else if let Some(parent) = full_path.parent() {
                     // 确保父目录存在

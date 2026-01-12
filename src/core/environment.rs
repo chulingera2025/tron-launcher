@@ -35,11 +35,7 @@ impl EnvironmentChecker {
             info!("Java 版本检查通过 (1.8)");
             Ok(())
         } else {
-            let current_version = version_str
-                .lines()
-                .next()
-                .unwrap_or("unknown")
-                .to_string();
+            let current_version = version_str.lines().next().unwrap_or("unknown").to_string();
 
             Err(TronCtlError::IncompatibleJavaVersion {
                 required: REQUIRED_JAVA_VERSION.to_string(),
