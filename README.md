@@ -1,263 +1,276 @@
-# tron-launcher (tronctl)
+# tronctl
 
-Tron FullNode 一键部署与生命周期管理工具。
+> A modern CLI tool for deploying and managing Tron FullNode with ease.
 
-## 特性
+[**中文文档**](./README.zh-CN.md) | [**English**](./README.md)
 
-- 🚀 一键初始化和部署 Tron FullNode
-- 📦 自动下载最新 FullNode.jar 和快照数据
-- 🌐 智能选择最快的快照服务器
-- 🔄 完整的进程生命周期管理
-- 📊 实时健康检查和状态监控
-- 🛡️ 环境检查和验证
+## Overview
 
-## 系统要求
+**tronctl** is a production-ready command-line tool written in Rust that simplifies the entire lifecycle of running a Tron FullNode. It handles everything from initial setup to daily operations, with built-in security features and interactive configuration.
 
-- **操作系统**: Linux (推荐 Arch Linux)
-- **Java**: Java 8 (1.8) - 严格要求
-- **内存**: 推荐 32GB
-- **磁盘**: 推荐 2.5TB+ SSD
-- **权限**: 需要 root 权限
+### Key Features
 
-## 安装
+- 🚀 **One-Command Setup** - Initialize and deploy a Tron FullNode in minutes
+- 📦 **Smart Downloads** - Automatically fetches the latest FullNode.jar and snapshot data
+- 🌐 **Intelligent Server Selection** - Chooses the fastest snapshot server based on network latency
+- ⚙️ **Interactive Configuration** - JVM memory settings and snapshot options via interactive prompts
+- 🔒 **Security Hardened** - Path traversal protection, file locking, and optional MD5 verification
+- 🔄 **Full Lifecycle Management** - Start, stop, restart, and monitor your node effortlessly
+- 📊 **Real-time Monitoring** - Health checks, RPC status, and block synchronization tracking
+- 🛡️ **Environment Validation** - Pre-flight checks for Java version, memory, and disk space
+
+## System Requirements
+
+| Component | Requirement |
+|-----------|-------------|
+| **OS** | Linux (tested on Arch Linux) |
+| **Java** | Java 8 (1.8.x) |
+| **Memory** | 32 GB recommended |
+| **Storage** | 2.5 TB+ SSD recommended |
+| **Privileges** | Root access required |
+
+## Installation
+
+### From Source
 
 ```bash
-# 克隆仓库
+# Clone the repository
 git clone https://github.com/yourusername/tron-launcher.git
 cd tron-launcher
 
-# 编译
+# Build release binary
 cargo build --release
 
-# 安装（可选）
+# Install system-wide (optional)
 sudo cp target/release/tronctl /usr/local/bin/
 ```
 
-## 快速开始
+## Quick Start
 
-### 1. 初始化节点
+### 1. Initialize Your Node
+
+Run the interactive initialization process:
 
 ```bash
-# 使用 Lite 快照（53GB，推荐用于测试）
+sudo tronctl init
+```
+
+The wizard will guide you through:
+- **Snapshot selection** - Choose Lite (53 GB) or Full (2937 GB) snapshot, or sync from genesis
+- **MD5 verification** - Optional integrity checking (complete download) vs. streaming (space-efficient)
+- **JVM memory** - Configure heap size based on your server (official recommendation: 32 GB RAM)
+
+For non-interactive mode:
+
+```bash
+# Use Lite snapshot (recommended for most users)
 sudo tronctl init --snapshot lite
 
-# 使用完整快照（2937GB，生产环境）
+# Use Full snapshot (for archive nodes)
 sudo tronctl init --snapshot full
 
-# 不使用快照（从0开始同步）
+# Start from genesis (no snapshot)
 sudo tronctl init --snapshot none
 ```
 
-### 2. 启动节点
+### 2. Start the Node
 
 ```bash
-# 后台运行
+# Start in background (daemon mode)
 sudo tronctl start --daemon
 
-# 前台运行（按 Ctrl+C 停止）
+# Start in foreground (Ctrl+C to stop)
 sudo tronctl start
 ```
 
-### 3. 查看状态
+### 3. Check Status
 
 ```bash
-# 基本状态
+# Basic status
 sudo tronctl status
 
-# 详细状态（包含区块同步检查）
+# Detailed status with sync verification
 sudo tronctl status --verbose
 ```
 
-### 4. 查看日志
-
-```bash
-# 查看最近100行日志
-sudo tronctl logs
-
-# 实时跟踪日志
-sudo tronctl logs -f
-
-# 查看最近500行
-sudo tronctl logs --lines 500
-```
-
-### 5. 停止节点
-
-```bash
-# 优雅停止
-sudo tronctl stop
-
-# 强制停止
-sudo tronctl stop --force
-```
-
-### 6. 重启节点
-
-```bash
-sudo tronctl restart --daemon
-```
-
-## 命令详解
-
-### `tronctl init`
-
-初始化 Tron FullNode 环境。
-
-**选项：**
-- `-s, --snapshot <TYPE>`: 快照类型 (none/lite/full)，默认 none
-- `-v, --version <VERSION>`: 指定 FullNode 版本，默认最新
-- `--skip-checks`: 跳过环境检查
-
-**示例：**
-```bash
-sudo tronctl init --snapshot lite
-sudo tronctl init --snapshot full --version GreatVoyage-v4.7.4
-```
-
-### `tronctl start`
-
-启动 Tron FullNode。
-
-**选项：**
-- `-d, --daemon`: 后台运行
-
-**示例：**
-```bash
-sudo tronctl start --daemon
-```
-
-### `tronctl stop`
-
-停止 Tron FullNode。
-
-**选项：**
-- `-f, --force`: 强制停止（SIGKILL）
-
-**示例：**
-```bash
-sudo tronctl stop
-sudo tronctl stop --force
-```
-
-### `tronctl restart`
-
-重启 Tron FullNode。
-
-**选项：**
-- `-d, --daemon`: 后台运行
-
-### `tronctl status`
-
-查看节点状态。
-
-**选项：**
-- `-v, --verbose`: 详细输出（包含区块同步检查）
-
-**输出示例：**
+**Example Output:**
 ```
 状态: 运行中
 PID: 12345
 进程存活: ✓
 RPC 响应: ✓
-当前区块: 12345678
+当前区块: 67890123
 ```
 
-### `tronctl logs`
-
-查看节点日志。
-
-**选项：**
-- `-f, --follow`: 实时跟踪日志
-- `-l, --lines <N>`: 显示最后 N 行，默认 100
-
-## 目录结构
-
-```
-/var/lib/tronctl/       # 数据目录
-├── FullNode.jar        # FullNode JAR 文件
-└── data/               # 区块链数据
-
-/etc/tronctl/           # 配置目录
-├── tron.conf           # Tron 节点配置
-└── tronctl.toml        # tronctl 配置
-
-/var/log/tronctl/       # 日志目录
-└── fullnode.log        # 节点日志
-
-/run/tronctl/           # 运行时目录
-└── tronctl.pid         # PID 文件
-```
-
-## 配置
-
-编辑 `/etc/tronctl/tron.conf` 修改 Tron 节点配置。
-
-编辑 `/etc/tronctl/tronctl.toml` 修改 tronctl 配置。
-
-## 故障排查
-
-### Java 版本错误
+### 4. View Logs
 
 ```bash
-# 检查 Java 版本
-java -version
+# Show last 100 lines (default)
+sudo tronctl logs
 
-# 应该看到 1.8.x 或 8.x
+# Follow logs in real-time
+sudo tronctl logs -f
+
+# Show last 500 lines
+sudo tronctl logs --lines 500
 ```
 
-### 权限不足
+### 5. Stop the Node
 
-所有命令都需要 root 权限：
+```bash
+# Graceful shutdown (SIGTERM with 30s timeout)
+sudo tronctl stop
 
+# Force kill (SIGKILL)
+sudo tronctl stop --force
+```
+
+### 6. Restart the Node
+
+```bash
+sudo tronctl restart --daemon
+```
+
+## Configuration
+
+After initialization, configuration files are located at:
+
+- **`/etc/tronctl/tronctl.toml`** - tronctl configuration (JVM settings, snapshot type)
+- **`/etc/tronctl/tron.conf`** - Tron node configuration (downloaded from official repository)
+
+Edit these files to customize your node behavior. Changes to `tron.conf` require a restart to take effect.
+
+## Advanced Usage
+
+### Specify FullNode Version
+
+```bash
+sudo tronctl init --snapshot lite --version GreatVoyage-v4.7.4
+```
+
+### Skip Environment Checks
+
+```bash
+sudo tronctl init --skip-checks
+```
+
+⚠️ **Warning:** Only use this if you're certain your environment meets the requirements.
+
+## Security Features
+
+- **Path Traversal Protection** - Validates all tar archive entries during snapshot extraction
+- **File Locking** - Prevents multiple instances from starting simultaneously (PID file locking)
+- **Optional MD5 Verification** - Ensures snapshot integrity when enabled
+- **No Unwrap Panics** - All error paths properly handled with expect/Result types
+
+## Troubleshooting
+
+### Java Version Error
+
+```bash
+# Check Java version
+java -version
+
+# Expected output: openjdk version "1.8.0_xxx" or "8.x.x"
+```
+
+Install Java 8 if needed:
+```bash
+# Arch Linux
+sudo pacman -S jdk8-openjdk
+sudo archlinux-java set java-8-openjdk
+
+# Debian/Ubuntu
+sudo apt install openjdk-8-jdk
+```
+
+### Permission Denied
+
+All commands require root privileges:
 ```bash
 sudo tronctl <command>
 ```
 
-### 节点无法启动
+### Node Won't Start
 
-1. 检查日志：`sudo tronctl logs`
-2. 检查 Java 进程：`ps aux | grep java`
-3. 检查端口占用：`sudo netstat -tlnp | grep 8090`
+1. Check logs: `sudo tronctl logs`
+2. Verify Java process: `ps aux | grep java`
+3. Check port availability: `sudo netstat -tlnp | grep 8090`
+4. Ensure sufficient memory: `free -h`
 
-### RPC 不响应
+### RPC Not Responding
 
-节点启动需要时间，通常需要等待 30-60 秒。使用 `sudo tronctl status` 持续监控。
+The node needs time to initialize (typically 30-60 seconds after start). Monitor with:
+```bash
+sudo tronctl status
+```
 
-## 开发
+If RPC remains unresponsive after 2 minutes, check logs for errors.
+
+## Development
+
+### Building from Source
 
 ```bash
-# 克隆仓库
+# Clone repository
 git clone https://github.com/yourusername/tron-launcher.git
 cd tron-launcher
 
-# 开发编译
+# Build debug version
 cargo build
 
-# 运行测试
+# Run tests
 cargo test
 
-# 运行 clippy 检查
+# Run linter
 cargo clippy
 
-# 格式化代码
+# Format code
 cargo fmt
 ```
 
-## 技术栈
+### Running Tests
 
-- **语言**: Rust 2024 Edition
-- **异步运行时**: Tokio
-- **CLI 框架**: Clap
-- **HTTP 客户端**: Reqwest
-- **序列化**: Serde, TOML
-- **日志**: Tracing
+```bash
+# Run all tests
+cargo test
 
-## 许可证
+# Run specific test
+cargo test test_name
 
-MIT License
+# Run with output
+cargo test -- --nocapture
+```
 
-## 相关链接
+## Technology Stack
 
-- [Tron 官网](https://tron.network/)
+- **Language:** Rust 2024 Edition
+- **Async Runtime:** Tokio
+- **CLI Framework:** Clap 4.5
+- **HTTP Client:** Reqwest (with streaming support)
+- **Serialization:** Serde, TOML
+- **Logging:** Tracing
+- **Interactive UI:** Dialoguer
+- **File Locking:** fs2
+- **Archive Handling:** tar, flate2, async-compression
+
+## Contributing
+
+Contributions are welcome! Please feel free to submit pull requests or open issues.
+
+## License
+
+This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENSE) file for details.
+
+## Acknowledgments
+
+- [Tron Protocol](https://tron.network/) - The blockchain platform
+- [java-tron](https://github.com/tronprotocol/java-tron) - Official Tron node implementation
+- [java-tron Releases](https://github.com/tronprotocol/java-tron/releases) - FullNode.jar download repository
+
+## Related Links
+
+- [Tron Official Website](https://tron.network/)
 - [java-tron GitHub](https://github.com/tronprotocol/java-tron)
-- [Tron 开发者文档](https://developers.tron.network/)
+- [Tron Developer Hub](https://developers.tron.network/)
+- [Tron Documentation](https://tron.network/documentation)
