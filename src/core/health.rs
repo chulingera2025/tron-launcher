@@ -15,7 +15,7 @@ impl HealthChecker {
             client: Client::builder()
                 .timeout(std::time::Duration::from_secs(5))
                 .build()
-                .unwrap(),
+                .expect("Failed to build HTTP client"),
         }
     }
 

@@ -16,7 +16,7 @@ impl SnapshotManager {
                 .timeout(Duration::from_secs(10))
                 .user_agent("tronctl/0.1.0")
                 .build()
-                .unwrap(),
+                .expect("Failed to build HTTP client"),
         }
     }
 

@@ -18,7 +18,7 @@ impl Downloader {
                 .timeout(std::time::Duration::from_secs(3600))
                 .user_agent("tronctl/0.1.0")
                 .build()
-                .unwrap(),
+                .expect("Failed to build HTTP client"),
         }
     }
 
