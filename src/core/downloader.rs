@@ -361,8 +361,7 @@ impl Downloader {
                 // 对于尚不存在的文件，验证其父目录
                 let path_to_check = if full_path.exists() {
                     full_path.canonicalize().map_err(|e| {
-                        std::io::Error::new(
-                            std::io::ErrorKind::Other,
+                        std::io::Error::other(
                             format!("无法规范化路径 {:?}: {}", full_path, e),
                         )
                     })?

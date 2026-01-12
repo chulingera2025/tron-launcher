@@ -29,6 +29,7 @@ impl ProcessManager {
             .read(true)
             .write(true)
             .create(true)
+            .truncate(false)
             .open(pid_path)?;
 
         // 尝试获取排他锁（非阻塞），防止多个实例同时启动
@@ -37,15 +38,13 @@ impl ProcessManager {
         })?;
 
         // 持有锁的情况下，检查是否已有进程在运行
-        if let Ok(content) = fs::read_to_string(pid_path) {
-            if let Ok(existing_pid) = content.trim().parse::<i32>() {
-                if Self::is_process_alive(existing_pid) {
+        if let Ok(content) = fs::read_to_string(pid_path)
+            && let Ok(existing_pid) = content.trim().parse::<i32>()
+                && Self::is_process_alive(existing_pid) {
                     // 释放锁（通过 drop）
                     drop(pid_file);
                     return Err(TronCtlError::NodeAlreadyRunning(existing_pid));
                 }
-            }
-        }
 
         info!("启动 Tron FullNode...");
 

@@ -7,13 +7,12 @@ use tracing::{info, warn};
 
 pub async fn execute(skip_confirm: bool) -> Result<()> {
     // 检查节点是否在运行
-    if let Some(pid) = ProcessManager::read_pid()? {
-        if ProcessManager::is_process_alive(pid) {
+    if let Some(pid) = ProcessManager::read_pid()?
+        && ProcessManager::is_process_alive(pid) {
             warn!("检测到节点正在运行 (PID: {})", pid);
             warn!("请先使用 'tronctl stop' 停止节点后再清理");
             return Ok(());
         }
-    }
 
     println!("\n警告: 此操作将删除 tronctl 产生的所有文件");
     println!("包括:");
