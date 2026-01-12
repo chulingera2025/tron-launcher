@@ -1,3 +1,4 @@
+pub mod clean;
 pub mod init;
 pub mod logs;
 pub mod restart;

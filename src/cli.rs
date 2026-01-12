@@ -64,4 +64,11 @@ pub enum Commands {
         #[arg(short, long, default_value = "100")]
         lines: usize,
     },
+
+    /// 清理 tronctl 产生的所有文件
+    Clean {
+        /// 跳过确认提示
+        #[arg(short = 'y', long)]
+        yes: bool,
+    },
 }

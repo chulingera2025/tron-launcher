@@ -40,6 +40,8 @@ async fn main() -> anyhow::Result<()> {
         cli::Commands::Status { verbose } => commands::status::execute(verbose).await,
 
         cli::Commands::Logs { follow, lines } => commands::logs::execute(follow, lines).await,
+
+        cli::Commands::Clean { yes } => commands::clean::execute(yes).await,
     };
 
     if let Err(e) = result {
