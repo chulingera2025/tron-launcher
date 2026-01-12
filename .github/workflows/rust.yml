@@ -61,6 +61,8 @@ jobs:
   release:
     name: Create Release
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     needs: build-and-test
     # Only run this job when a `v*` tag is pushed
     if: startsWith(github.ref, 'refs/tags/v')
