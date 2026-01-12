@@ -3,7 +3,7 @@ use crate::core::{Downloader, EnvironmentChecker, SnapshotManager};
 use crate::error::Result;
 use crate::models::TronCtlConfig;
 use crate::utils::fs;
-use dialoguer::{Confirm, Select};
+use dialoguer::{Confirm, Input, Select};
 use std::path::{Path, PathBuf};
 use tracing::{info, warn};
 
@@ -129,8 +129,37 @@ pub async fn execute(
         info!("快照下载并解压完成");
     }
 
-    // 7. 保存配置
-    save_config(&snapshot_choice)?;
+    // 7. 配置 JVM 内存
+    println!("\n JVM 内存配置");
+    println!("官方推荐: 32 GB 系统内存");
+    println!("说明: 最小堆内存(Xms)和最大堆内存(Xmx)，格式如: 8g, 12g, 16g");
+
+    let jvm_min_heap: String = Input::new()
+        .with_prompt("JVM 最小堆内存 (Xms)")
+        .default("8g".to_string())
+        .validate_with(|input: &String| -> std::result::Result<(), &str> {
+            if input.ends_with('g') || input.ends_with('m') || input.ends_with('G') || input.ends_with('M') {
+                Ok(())
+            } else {
+                Err("格式错误，应以 'g' 或 'm' 结尾，如: 8g, 12g")
+            }
+        })
+        .interact()?;
+
+    let jvm_max_heap: String = Input::new()
+        .with_prompt("JVM 最大堆内存 (Xmx)")
+        .default("12g".to_string())
+        .validate_with(|input: &String| -> std::result::Result<(), &str> {
+            if input.ends_with('g') || input.ends_with('m') || input.ends_with('G') || input.ends_with('M') {
+                Ok(())
+            } else {
+                Err("格式错误，应以 'g' 或 'm' 结尾，如: 8g, 12g")
+            }
+        })
+        .interact()?;
+
+    // 8. 保存配置
+    save_config(&snapshot_choice, &jvm_min_heap, &jvm_max_heap)?;
 
     info!("初始化完成!");
     info!("运行 'tronctl start' 启动节点");
@@ -183,9 +212,11 @@ async fn generate_default_config() -> Result<()> {
     Ok(())
 }
 
-fn save_config(snapshot_type: &str) -> Result<()> {
+fn save_config(snapshot_type: &str, jvm_min_heap: &str, jvm_max_heap: &str) -> Result<()> {
     let config = TronCtlConfig {
         snapshot_type: snapshot_type.to_string(),
+        jvm_min_heap: jvm_min_heap.to_string(),
+        jvm_max_heap: jvm_max_heap.to_string(),
         ..Default::default()
     };
 
