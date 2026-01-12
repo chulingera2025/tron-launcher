@@ -22,11 +22,13 @@ nix = { version = "0.30", features = ["process", "signal", "user"] }
 sysinfo = "0.37"
 md5 = "0.8.0"
 tar = "0.4"
+flate2 = "1.0"
 async-compression = { version = "0.4", features = ["tokio", "gzip"] }
 indicatif = "0.18"
 chrono = "0.4"
 futures = "0.3"
 tokio-util = { version = "0.7", features = ["io", "io-util"] }
+dialoguer = "0.11"
 
 [dev-dependencies]
 mockito = "1.5"
