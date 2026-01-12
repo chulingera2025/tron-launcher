@@ -4,7 +4,7 @@ use futures::StreamExt;
 use reqwest::Client;
 use std::path::Path;
 use tokio::fs::File;
-use tokio::io::AsyncWriteExt;
+use tokio::io::{AsyncWriteExt, AsyncSeekExt};
 use tracing::{debug, info, warn};
 
 pub struct Downloader {
@@ -67,7 +67,7 @@ impl Downloader {
             .ok_or_else(|| TronCtlError::DownloadFailed("未找到可用版本".to_string()))
     }
 
-    /// 流式下载大文件并显示进度
+    /// 流式下载大文件并显示进度（自动选择单线程或多线程）
     pub async fn download_with_progress(
         &self,
         url: &str,
@@ -76,6 +76,46 @@ impl Downloader {
     ) -> Result<()> {
         debug!("开始下载: {} -> {:?}", url, dest);
 
+        // 发送 HEAD 请求检查文件信息（reqwest 会自动跟随重定向）
+        let head_response = self.client.head(url).send().await?;
+
+        if !head_response.status().is_success() {
+            return Err(TronCtlError::DownloadFailed(format!(
+                "HEAD 请求失败，状态码: {}",
+                head_response.status()
+            )));
+        }
+
+        let total_size = head_response
+            .content_length()
+            .ok_or_else(|| TronCtlError::DownloadFailed("无法获取文件大小".to_string()))?;
+
+        // 检查最终响应是否支持 Range 请求（重定向后的实际文件服务器）
+        let supports_range = head_response
+            .headers()
+            .get("accept-ranges")
+            .and_then(|v| v.to_str().ok())
+            .map(|v| v == "bytes")
+            .unwrap_or(false);
+
+        // 如果支持 Range 且文件 > 10MB，使用多线程下载
+        if supports_range && total_size > 10 * 1024 * 1024 {
+            debug!("使用多线程下载，文件大小: {} bytes", total_size);
+            self.download_multithreaded(url, dest, total_size, expected_md5)
+                .await
+        } else {
+            debug!("使用单线程下载");
+            self.download_single_thread(url, dest, expected_md5).await
+        }
+    }
+
+    /// 单线程下载
+    async fn download_single_thread(
+        &self,
+        url: &str,
+        dest: &Path,
+        expected_md5: Option<&str>,
+    ) -> Result<()> {
         let response = self.client.get(url).send().await?;
 
         if !response.status().is_success() {
@@ -86,13 +126,11 @@ impl Downloader {
         }
 
         let total_size = response.content_length().unwrap_or(0);
-
         let pb = ui::create_download_progress_bar(total_size);
 
         let mut file = File::create(dest).await?;
         let mut stream = response.bytes_stream();
         let mut downloaded: u64 = 0;
-
         let mut all_bytes = Vec::new();
 
         while let Some(chunk_result) = stream.next().await {
@@ -113,6 +151,114 @@ impl Downloader {
         // MD5 校验
         if let Some(expected) = expected_md5 {
             let digest = md5::compute(&all_bytes);
+            let actual = format!("{:x}", digest);
+            if actual != expected {
+                return Err(TronCtlError::Md5Mismatch {
+                    expected: expected.to_string(),
+                    actual,
+                });
+            }
+            info!("MD5 校验通过");
+        }
+
+        Ok(())
+    }
+
+    /// 多线程分块下载
+    async fn download_multithreaded(
+        &self,
+        url: &str,
+        dest: &Path,
+        total_size: u64,
+        expected_md5: Option<&str>,
+    ) -> Result<()> {
+        use std::sync::Arc;
+        use tokio::sync::Mutex;
+
+        let num_threads = num_cpus::get();
+        let chunk_size = total_size / num_threads as u64;
+
+        let pb = ui::create_download_progress_bar(total_size);
+        let pb = Arc::new(pb);
+
+        // 创建目标文件并预分配空间
+        let file = File::create(dest).await?;
+        file.set_len(total_size).await?;
+        let file = Arc::new(Mutex::new(file));
+
+        let mut tasks = Vec::new();
+
+        for i in 0..num_threads {
+            let start = i as u64 * chunk_size;
+            let end = if i == num_threads - 1 {
+                total_size - 1
+            } else {
+                (i as u64 + 1) * chunk_size - 1
+            };
+
+            let client = self.client.clone();
+            let url = url.to_string();
+            let file = Arc::clone(&file);
+            let pb = Arc::clone(&pb);
+
+            let task = tokio::spawn(async move {
+                let range = format!("bytes={}-{}", start, end);
+                let response = client
+                    .get(&url)
+                    .header("Range", range)
+                    .send()
+                    .await
+                    .map_err(|e| {
+                        TronCtlError::DownloadFailed(format!("分块下载失败: {}", e))
+                    })?;
+
+                // 206 Partial Content 或 200 OK 都可以接受
+                if !response.status().is_success() && response.status().as_u16() != 206 {
+                    return Err(TronCtlError::DownloadFailed(format!(
+                        "分块下载失败，状态码: {}",
+                        response.status()
+                    )));
+                }
+
+                let mut stream = response.bytes_stream();
+                let mut position = start;
+
+                while let Some(chunk_result) = stream.next().await {
+                    let chunk = chunk_result.map_err(|e| {
+                        TronCtlError::DownloadFailed(format!("读取数据块失败: {}", e))
+                    })?;
+
+                    let mut file = file.lock().await;
+                    file.seek(std::io::SeekFrom::Start(position)).await?;
+                    file.write_all(&chunk).await?;
+                    drop(file);
+
+                    position += chunk.len() as u64;
+                    pb.inc(chunk.len() as u64);
+                }
+
+                Ok::<(), TronCtlError>(())
+            });
+
+            tasks.push(task);
+        }
+
+        // 等待所有分块下载完成
+        for task in tasks {
+            task.await
+                .map_err(|e| TronCtlError::Other(anyhow::anyhow!("下载任务失败: {}", e)))??;
+        }
+
+        pb.finish_with_message("下载完成");
+
+        let mut file = file.lock().await;
+        file.flush().await?;
+        drop(file);
+
+        // MD5 校验
+        if let Some(expected) = expected_md5 {
+            let file_content = tokio::fs::read(dest).await?;
+            let digest = md5::compute(&file_content);
             let actual = format!("{:x}", digest);
             if actual != expected {
                 return Err(TronCtlError::Md5Mismatch {
@@ -305,6 +451,14 @@ mod tests {
         let mut server = mockito::Server::new_async().await;
         let content = b"test file content";
 
+        // Mock HEAD 请求（不支持 Range，走单线程下载）
+        let _head_mock = server
+            .mock("HEAD", "/test.file")
+            .with_status(200)
+            .with_header("content-length", &content.len().to_string())
+            .create_async()
+            .await;
+
         let _mock = server
             .mock("GET", "/test.file")
             .with_status(200)
@@ -333,6 +487,14 @@ mod tests {
         let content = b"test";
         let md5_hash = format!("{:x}", md5::compute(content));
 
+        // Mock HEAD 请求
+        let _head_mock = server
+            .mock("HEAD", "/test.file")
+            .with_status(200)
+            .with_header("content-length", &content.len().to_string())
+            .create_async()
+            .await;
+
         let _mock = server
             .mock("GET", "/test.file")
             .with_status(200)
@@ -357,6 +519,14 @@ mod tests {
     async fn test_download_with_progress_md5_mismatch() {
         let mut server = mockito::Server::new_async().await;
         let content = b"test";
+
+        // Mock HEAD 请求
+        let _head_mock = server
+            .mock("HEAD", "/test.file")
+            .with_status(200)
+            .with_header("content-length", &content.len().to_string())
+            .create_async()
+            .await;
 
         let _mock = server
             .mock("GET", "/test.file")
@@ -385,6 +555,13 @@ mod tests {
     #[tokio::test]
     async fn test_download_with_progress_http_error() {
         let mut server = mockito::Server::new_async().await;
+
+        // Mock HEAD 请求返回 404
+        let _head_mock = server
+            .mock("HEAD", "/test.file")
+            .with_status(404)
+            .create_async()
+            .await;
 
         let _mock = server
             .mock("GET", "/test.file")
