@@ -10,17 +10,13 @@ pub async fn execute(daemon: bool) -> Result<()> {
 
     let pid = ProcessManager::start(&config).await?;
 
-    if daemon {
-        info!("节点已在后台运行 (PID: {})", pid);
-        info!("使用 'tronctl status' 查看状态");
-        info!("使用 'tronctl logs -f' 查看日志");
-    } else {
-        info!("节点正在运行... (按 Ctrl+C 停止)");
+    info!("节点已启动 (PID: {})", pid);
+    info!("使用 'tronctl status' 查看状态");
+    info!("使用 'tronctl logs -f' 查看日志");
+    info!("使用 'tronctl stop' 停止节点");
 
-        tokio::signal::ctrl_c().await?;
-
-        info!("\n收到中断信号，停止节点...");
-        ProcessManager::stop(false)?;
+    if !daemon {
+        info!("\n提示: 使用 --daemon 参数可以抑制提示信息");
     }
 
     Ok(())
