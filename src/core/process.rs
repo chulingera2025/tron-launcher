@@ -65,6 +65,7 @@ impl ProcessManager {
             .arg(&config.node_config)
             .arg("-d")
             .arg(&config.data_dir)
+            .current_dir(crate::constants::DATA_DIR)
             .stdout(Stdio::from(log_file.try_clone()?))
             .stderr(Stdio::from(log_file))
             .spawn()?;

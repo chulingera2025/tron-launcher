@@ -28,7 +28,11 @@ pub async fn execute(
     let downloader = Downloader::new();
     let fullnode_jar = PathBuf::from(DATA_DIR).join("FullNode.jar");
 
-    downloader.download_fullnode(version, &fullnode_jar).await?;
+    if fullnode_jar.exists() {
+        info!("FullNode.jar 已存在，跳过下载: {:?}", fullnode_jar);
+    } else {
+        downloader.download_fullnode(version, &fullnode_jar).await?;
+    }
 
     // 4. 生成默认配置文件
     generate_default_config().await?;
@@ -69,63 +73,69 @@ pub async fn execute(
 
     // 6. 下载快照（如果需要）
     if snapshot_choice != "none" {
-        let snapshot_mgr = SnapshotManager::new();
-
-        info!("选择快照服务器...");
-        let server = snapshot_mgr.select_fastest_server().await?;
-
-        info!("获取最新快照元数据...");
-        let metadata = snapshot_mgr
-            .get_latest_snapshot(&server, &snapshot_choice)
-            .await?;
-
-        info!("下载快照: {} ({} GB)", metadata.date, metadata.size_gb);
-
-        // 询问是否需要 MD5 校验
-        let verify_md5 = Confirm::new()
-            .with_prompt(
-                "是否启用 MD5 校验？\n  \
-                启用: 下载完整文件后校验，更安全但需要更多磁盘空间\n  \
-                禁用: 流式下载解压，节省磁盘空间但无法验证完整性\n  \
-                选择",
-            )
-            .default(false)
-            .interact()?;
-
-        let data_dir = PathBuf::from(DATA_DIR).join("data");
-        fs::ensure_dir_exists(&data_dir).await?;
-
-        if verify_md5 {
-            info!("使用 MD5 校验模式（完整下载后解压）");
-            info!("正在下载快照到临时文件...");
-
-            let temp_file =
-                PathBuf::from("/tmp").join(format!("tron-snapshot-{}.tgz", metadata.date));
-
-            // 完整下载并校验
-            downloader
-                .download_with_progress(&metadata.download_url, &temp_file, Some(&metadata.md5))
-                .await?;
-
-            info!("MD5 校验通过，开始解压...");
-
-            // 解压
-            extract_snapshot_file(&temp_file, &data_dir).await?;
-
-            // 删除临时文件
-            tokio::fs::remove_file(&temp_file).await?;
-            info!("临时文件已清理");
+        // 检查快照数据目录是否已存在
+        let snapshot_db_dir = PathBuf::from(DATA_DIR).join("data/output-directory/database");
+        if snapshot_db_dir.exists() && snapshot_db_dir.read_dir()?.next().is_some() {
+            info!("检测到已存在的快照数据，跳过下载: {:?}", snapshot_db_dir);
         } else {
-            info!("使用流式解压模式（无 MD5 校验）");
-            info!("正在流式下载并解压，请耐心等待...");
+            let snapshot_mgr = SnapshotManager::new();
 
-            // 流式下载并解压
-            downloader
-                .download_and_extract_tgz(&metadata.download_url, &data_dir, None)
+            info!("选择快照服务器...");
+            let server = snapshot_mgr.select_fastest_server().await?;
+
+            info!("获取最新快照元数据...");
+            let metadata = snapshot_mgr
+                .get_latest_snapshot(&server, &snapshot_choice)
                 .await?;
-        }
 
-        info!("快照下载并解压完成");
+            info!("下载快照: {} ({} GB)", metadata.date, metadata.size_gb);
+
+            // 询问是否需要 MD5 校验
+            let verify_md5 = Confirm::new()
+                .with_prompt(
+                    "是否启用 MD5 校验？\n  \
+                    启用: 下载完整文件后校验，更安全但需要更多磁盘空间\n  \
+                    禁用: 流式下载解压，节省磁盘空间但无法验证完整性\n  \
+                    选择",
+                )
+                .default(false)
+                .interact()?;
+
+            let data_dir = PathBuf::from(DATA_DIR).join("data");
+            fs::ensure_dir_exists(&data_dir).await?;
+
+            if verify_md5 {
+                info!("使用 MD5 校验模式（完整下载后解压）");
+                info!("正在下载快照到临时文件...");
+
+                let temp_file =
+                    PathBuf::from("/tmp").join(format!("tron-snapshot-{}.tgz", metadata.date));
+
+                // 完整下载并校验
+                downloader
+                    .download_with_progress(&metadata.download_url, &temp_file, Some(&metadata.md5))
+                    .await?;
+
+                info!("MD5 校验通过，开始解压...");
+
+                // 解压
+                extract_snapshot_file(&temp_file, &data_dir).await?;
+
+                // 删除临时文件
+                tokio::fs::remove_file(&temp_file).await?;
+                info!("临时文件已清理");
+            } else {
+                info!("使用流式解压模式（无 MD5 校验）");
+                info!("正在流式下载并解压，请耐心等待...");
+
+                // 流式下载并解压
+                downloader
+                    .download_and_extract_tgz(&metadata.download_url, &data_dir, None)
+                    .await?;
+            }
+
+            info!("快照下载并解压完成");
+        }
     }
 
     // 7. 配置 JVM 内存

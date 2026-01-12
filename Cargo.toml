@@ -1,6 +1,6 @@
 [package]
 name = "tron-launcher"
-version = "0.1.0"
+version = "0.1.5"
 authors = ["chulingera2025<chulingera2025@gmail.com>"]
 edition = "2024"
 license = "Apache-2.0"

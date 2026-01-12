@@ -22,7 +22,7 @@ impl Default for TronCtlConfig {
             fullnode_jar: PathBuf::from(crate::constants::DATA_DIR).join("FullNode.jar"),
             node_config: PathBuf::from(crate::constants::CONFIG_DIR)
                 .join(crate::constants::NODE_CONFIG),
-            data_dir: PathBuf::from(crate::constants::DATA_DIR).join("data"),
+            data_dir: PathBuf::from(crate::constants::DATA_DIR).join("data/output-directory"),
             log_file: PathBuf::from(crate::constants::LOG_DIR).join("fullnode.log"),
             snapshot_type: "none".to_string(),
         }
@@ -68,7 +68,7 @@ mod tests {
             jvm_max_heap = "12g"
             fullnode_jar = "/var/lib/tronctl/FullNode.jar"
             node_config = "/etc/tronctl/tron.conf"
-            data_dir = "/var/lib/tronctl/data"
+            data_dir = "/var/lib/tronctl/data/output-directory"
             log_file = "/var/log/tronctl/fullnode.log"
             snapshot_type = "lite"
         "#;
