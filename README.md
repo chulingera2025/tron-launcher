@@ -131,6 +131,24 @@ sudo tronctl stop --force
 sudo tronctl restart --daemon
 ```
 
+### 7. Clean Up
+
+Remove all tronctl-generated files:
+
+```bash
+# Interactive cleanup (asks for confirmation)
+sudo tronctl clean
+
+# Non-interactive cleanup (auto-confirm)
+sudo tronctl clean -y
+```
+
+During cleanup, you'll be asked:
+- **Confirm overall cleanup** - Remove configuration, JAR, logs, and PID files
+- **Blockchain data cleanup** - Choose whether to delete blockchain data (can be hundreds of GB to TB)
+
+⚠️ **Note:** The node must be stopped before running cleanup.
+
 ## Configuration
 
 After initialization, configuration files are located at:

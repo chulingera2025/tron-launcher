@@ -131,6 +131,24 @@ sudo tronctl stop --force
 sudo tronctl restart --daemon
 ```
 
+### 7. 清理文件
+
+删除所有 tronctl 产生的文件：
+
+```bash
+# 交互式清理（需要确认）
+sudo tronctl clean
+
+# 非交互式清理（自动确认）
+sudo tronctl clean -y
+```
+
+清理过程中会询问：
+- **总体清理确认** - 删除配置、JAR、日志和 PID 文件
+- **区块链数据清理** - 选择是否删除区块链数据（可能有数百 GB 到 TB）
+
+⚠️ **注意：** 运行清理前必须先停止节点。
+
 ## 配置文件
 
 初始化完成后，配置文件位于：
