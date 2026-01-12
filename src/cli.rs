@@ -13,9 +13,9 @@ pub struct Cli {
 pub enum Commands {
     /// 初始化 Tron FullNode 环境
     Init {
-        /// 快照类型: none, lite, full
-        #[arg(short, long, default_value = "none")]
-        snapshot: String,
+        /// 快照类型: none, lite, full (不提供则交互式选择)
+        #[arg(short, long)]
+        snapshot: Option<String>,
 
         /// FullNode 版本 (默认最新)
         #[arg(short, long)]
