@@ -60,6 +60,12 @@ pub enum TronCtlError {
     Other(#[from] anyhow::Error),
 }
 
+impl From<dialoguer::Error> for TronCtlError {
+    fn from(err: dialoguer::Error) -> Self {
+        TronCtlError::Other(anyhow::Error::from(err))
+    }
+}
+
 pub type Result<T> = std::result::Result<T, TronCtlError>;
 
 #[cfg(test)]
