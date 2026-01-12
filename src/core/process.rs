@@ -34,17 +34,20 @@ impl ProcessManager {
 
         // 尝试获取排他锁（非阻塞），防止多个实例同时启动
         pid_file.try_lock_exclusive().map_err(|_| {
-            TronCtlError::Other(anyhow::anyhow!("无法获取 PID 文件锁，可能有其他实例正在启动或运行"))
+            TronCtlError::Other(anyhow::anyhow!(
+                "无法获取 PID 文件锁，可能有其他实例正在启动或运行"
+            ))
         })?;
 
         // 持有锁的情况下，检查是否已有进程在运行
         if let Ok(content) = fs::read_to_string(pid_path)
             && let Ok(existing_pid) = content.trim().parse::<i32>()
-                && Self::is_process_alive(existing_pid) {
-                    // 释放锁（通过 drop）
-                    drop(pid_file);
-                    return Err(TronCtlError::NodeAlreadyRunning(existing_pid));
-                }
+            && Self::is_process_alive(existing_pid)
+        {
+            // 释放锁（通过 drop）
+            drop(pid_file);
+            return Err(TronCtlError::NodeAlreadyRunning(existing_pid));
+        }
 
         info!("启动 Tron FullNode...");
 
@@ -86,8 +89,7 @@ impl ProcessManager {
 
     /// 停止 FullNode 进程
     pub fn stop(force: bool) -> Result<()> {
-        let pid = Self::read_pid()?
-            .ok_or(TronCtlError::NodeNotRunning)?;
+        let pid = Self::read_pid()?.ok_or(TronCtlError::NodeNotRunning)?;
 
         if !Self::is_process_alive(pid) {
             Self::remove_pid_file()?;

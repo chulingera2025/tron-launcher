@@ -59,7 +59,9 @@ mod tests {
         "#;
 
         let config_path = temp_dir.path().join("tronctl.toml");
-        tokio::fs::write(&config_path, config_content).await.unwrap();
+        tokio::fs::write(&config_path, config_content)
+            .await
+            .unwrap();
 
         // 由于 load_config 使用硬编码路径，这个测试只能验证解析逻辑
     }

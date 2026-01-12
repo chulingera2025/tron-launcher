@@ -12,7 +12,8 @@ pub const RECOMMENDED_MEMORY_GB: u64 = 32;
 pub const RECOMMENDED_DISK_GB: u64 = 2560;
 
 pub const GITHUB_REPO: &str = "tronprotocol/java-tron";
-pub const GITHUB_API_RELEASES: &str = "https://api.github.com/repos/tronprotocol/java-tron/releases";
+pub const GITHUB_API_RELEASES: &str =
+    "https://api.github.com/repos/tronprotocol/java-tron/releases";
 
 pub const SNAPSHOT_SERVERS: &[&str] = &[
     "http://34.143.247.77",

@@ -39,7 +39,11 @@ impl SnapshotManager {
                 "  {} - {}ms {}",
                 server.url,
                 server.latency.as_millis(),
-                if server.available { "可用" } else { "不可用" }
+                if server.available {
+                    "可用"
+                } else {
+                    "不可用"
+                }
             );
 
             servers.push(server);
@@ -68,7 +72,7 @@ impl SnapshotManager {
                 return Err(TronCtlError::ConfigError(format!(
                     "无效的快照类型: {}",
                     snapshot_type
-                )))
+                )));
             }
         };
 
@@ -78,10 +82,7 @@ impl SnapshotManager {
             let date_str = date.format("%Y%m%d").to_string();
 
             // 构造快照 URL，格式如：backup20260109/FullNode_output-directory.tgz
-            let snapshot_url = format!(
-                "{}/backup{}/{}.tgz",
-                server.url, date_str, filename_prefix
-            );
+            let snapshot_url = format!("{}/backup{}/{}.tgz", server.url, date_str, filename_prefix);
             let md5_url = format!("{}.md5sum", snapshot_url);
 
             debug!("尝试快照: {}", snapshot_url);

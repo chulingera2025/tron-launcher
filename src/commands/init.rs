@@ -28,9 +28,7 @@ pub async fn execute(
     let downloader = Downloader::new();
     let fullnode_jar = PathBuf::from(DATA_DIR).join("FullNode.jar");
 
-    downloader
-        .download_fullnode(version, &fullnode_jar)
-        .await?;
+    downloader.download_fullnode(version, &fullnode_jar).await?;
 
     // 4. 生成默认配置文件
     generate_default_config().await?;
@@ -101,7 +99,8 @@ pub async fn execute(
             info!("使用 MD5 校验模式（完整下载后解压）");
             info!("正在下载快照到临时文件...");
 
-            let temp_file = PathBuf::from("/tmp").join(format!("tron-snapshot-{}.tgz", metadata.date));
+            let temp_file =
+                PathBuf::from("/tmp").join(format!("tron-snapshot-{}.tgz", metadata.date));
 
             // 完整下载并校验
             downloader
@@ -138,7 +137,11 @@ pub async fn execute(
         .with_prompt("JVM 最小堆内存 (Xms)")
         .default("8g".to_string())
         .validate_with(|input: &String| -> std::result::Result<(), &str> {
-            if input.ends_with('g') || input.ends_with('m') || input.ends_with('G') || input.ends_with('M') {
+            if input.ends_with('g')
+                || input.ends_with('m')
+                || input.ends_with('G')
+                || input.ends_with('M')
+            {
                 Ok(())
             } else {
                 Err("格式错误，应以 'g' 或 'm' 结尾，如: 8g, 12g")
@@ -150,7 +153,11 @@ pub async fn execute(
         .with_prompt("JVM 最大堆内存 (Xmx)")
         .default("12g".to_string())
         .validate_with(|input: &String| -> std::result::Result<(), &str> {
-            if input.ends_with('g') || input.ends_with('m') || input.ends_with('G') || input.ends_with('M') {
+            if input.ends_with('g')
+                || input.ends_with('m')
+                || input.ends_with('G')
+                || input.ends_with('M')
+            {
                 Ok(())
             } else {
                 Err("格式错误，应以 'g' 或 'm' 结尾，如: 8g, 12g")
