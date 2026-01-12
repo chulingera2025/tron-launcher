@@ -5,7 +5,7 @@ use reqwest::Client;
 use std::path::Path;
 use tokio::fs::File;
 use tokio::io::AsyncWriteExt;
-use tracing::{debug, info};
+use tracing::{debug, info, warn};
 
 pub struct Downloader {
     client: Client,
@@ -137,7 +137,7 @@ impl Downloader {
         &self,
         url: &str,
         dest_dir: &Path,
-        _expected_md5: Option<&str>,
+        expected_md5: Option<&str>,
     ) -> Result<()> {
         use async_compression::tokio::bufread::GzipDecoder;
         use futures::StreamExt;
@@ -158,6 +158,11 @@ impl Downloader {
         let pb = ui::create_download_progress_bar(total_size);
         let pb_clone = pb.clone();
 
+        // 规范化目标路径，防止路径遍历攻击
+        let dest_dir_canonical = dest_dir
+            .canonicalize()
+            .map_err(|e| TronCtlError::Other(anyhow::anyhow!("无效的目标路径: {}", e)))?;
+
         // 将字节流转换为 AsyncRead，同时更新进度条
         let stream = response.bytes_stream().map(move |result| {
             if let Ok(chunk) = &result {
@@ -172,21 +177,93 @@ impl Downloader {
         let gzip_decoder = GzipDecoder::new(tokio::io::BufReader::new(reader));
 
         // 在独立线程中进行 tar 解压（tar 是阻塞操作）
-        let dest_dir = dest_dir.to_path_buf();
+        let dest_dir = dest_dir_canonical;
         let extract_task = tokio::task::spawn_blocking(move || {
             use tokio_util::io::SyncIoBridge;
+            use std::path::Component;
 
             let sync_reader = SyncIoBridge::new(gzip_decoder);
             let mut archive = tar::Archive::new(sync_reader);
-            archive.unpack(&dest_dir)?;
+
+            // 安全解压：验证每个文件的路径
+            for entry in archive.entries()? {
+                let mut entry = entry?;
+                let path = entry.path()?;
+
+                // 1. 检查路径是否包含 .. 组件（父目录引用）
+                for component in path.components() {
+                    if matches!(component, Component::ParentDir) {
+                        return Err(std::io::Error::new(
+                            std::io::ErrorKind::PermissionDenied,
+                            format!("检测到路径遍历攻击（包含 ..）: {:?}", path),
+                        ));
+                    }
+                }
+
+                // 2. 检查是否为绝对路径
+                if path.is_absolute() {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::PermissionDenied,
+                        format!("拒绝解压绝对路径: {:?}", path),
+                    ));
+                }
+
+                // 3. 构造完整路径并验证
+                let full_path = dest_dir.join(&path);
+
+                // 4. 验证解压路径确实在目标目录内
+                // 对于尚不存在的文件，验证其父目录
+                let path_to_check = if full_path.exists() {
+                    full_path.canonicalize().map_err(|e| {
+                        std::io::Error::new(
+                            std::io::ErrorKind::Other,
+                            format!("无法规范化路径 {:?}: {}", full_path, e),
+                        )
+                    })?
+                } else if let Some(parent) = full_path.parent() {
+                    // 确保父目录存在
+                    std::fs::create_dir_all(parent)?;
+                    let parent_canonical = parent.canonicalize()?;
+                    if let Some(file_name) = full_path.file_name() {
+                        parent_canonical.join(file_name)
+                    } else {
+                        return Err(std::io::Error::new(
+                            std::io::ErrorKind::InvalidInput,
+                            "无效的文件路径",
+                        ));
+                    }
+                } else {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::InvalidInput,
+                        "无效的文件路径",
+                    ));
+                };
+
+                // 确保路径在目标目录内
+                if !path_to_check.starts_with(&dest_dir) {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::PermissionDenied,
+                        format!("路径在目标目录外: {:?} -> {:?}", path, path_to_check),
+                    ));
+                }
+
+                // 安全解压
+                entry.unpack(&full_path)?;
+            }
+
             Ok::<_, std::io::Error>(())
         });
 
-        extract_task.await.map_err(|e| {
-            TronCtlError::Other(anyhow::anyhow!("解压任务失败: {}", e))
-        })??;
+        extract_task
+            .await
+            .map_err(|e| TronCtlError::Other(anyhow::anyhow!("解压任务失败: {}", e)))??;
 
         pb.finish_with_message("下载并解压完成");
+
+        // MD5 校验提示
+        if expected_md5.is_some() {
+            warn!("流式解压模式下暂不支持 MD5 校验，建议通过服务器 HTTPS 保证文件完整性");
+        }
 
         info!("流式解压完成");
         Ok(())
