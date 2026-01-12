@@ -1,6 +1,7 @@
 use crate::constants::PID_FILE;
 use crate::error::{Result, TronCtlError};
 use crate::models::TronCtlConfig;
+use fs2::FileExt;
 use nix::sys::signal::{self, Signal};
 use nix::unistd::Pid;
 use std::fs;
@@ -14,9 +15,35 @@ pub struct ProcessManager;
 impl ProcessManager {
     /// 启动 FullNode 进程
     pub async fn start(config: &TronCtlConfig) -> Result<i32> {
-        if let Some(pid) = Self::read_pid()? {
-            if Self::is_process_alive(pid) {
-                return Err(TronCtlError::NodeAlreadyRunning(pid));
+        use std::io::{Seek, Write};
+
+        let pid_path = Path::new(PID_FILE);
+
+        // 确保目录存在
+        if let Some(parent) = pid_path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+
+        // 打开/创建 PID 文件并获取排他锁（在整个启动过程中持有锁）
+        let mut pid_file = fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .open(pid_path)?;
+
+        // 尝试获取排他锁（非阻塞），防止多个实例同时启动
+        pid_file.try_lock_exclusive().map_err(|_| {
+            TronCtlError::Other(anyhow::anyhow!("无法获取 PID 文件锁，可能有其他实例正在启动或运行"))
+        })?;
+
+        // 持有锁的情况下，检查是否已有进程在运行
+        if let Ok(content) = fs::read_to_string(pid_path) {
+            if let Ok(existing_pid) = content.trim().parse::<i32>() {
+                if Self::is_process_alive(existing_pid) {
+                    // 释放锁（通过 drop）
+                    drop(pid_file);
+                    return Err(TronCtlError::NodeAlreadyRunning(existing_pid));
+                }
             }
         }
 
@@ -45,9 +72,16 @@ impl ProcessManager {
             .ok_or_else(|| TronCtlError::ProcessStartFailed("无法获取进程 PID".to_string()))?
             as i32;
 
-        Self::write_pid(pid)?;
-        info!("FullNode 已启动, PID: {}", pid);
+        // 清空文件并写入新 PID（仍在锁保护下）
+        pid_file.set_len(0)?;
+        pid_file.seek(std::io::SeekFrom::Start(0))?;
+        write!(pid_file, "{}", pid)?;
+        pid_file.flush()?;
 
+        // 文件关闭时自动释放锁
+        drop(pid_file);
+
+        info!("FullNode 已启动, PID: {}", pid);
         Ok(pid)
     }
 
@@ -112,18 +146,6 @@ impl ProcessManager {
             .map_err(|_| TronCtlError::ConfigError("无效的 PID 文件".to_string()))?;
 
         Ok(Some(pid))
-    }
-
-    /// 写入 PID 文件
-    fn write_pid(pid: i32) -> Result<()> {
-        let pid_path = Path::new(PID_FILE);
-
-        if let Some(parent) = pid_path.parent() {
-            std::fs::create_dir_all(parent)?;
-        }
-
-        fs::write(pid_path, pid.to_string())?;
-        Ok(())
     }
 
     /// 删除 PID 文件

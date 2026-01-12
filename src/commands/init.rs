@@ -40,7 +40,7 @@ pub async fn execute(
         s
     } else {
         // 交互式询问
-        println!("\n📦 快照下载配置");
+        println!("\n 快照下载配置");
         println!("快照可以加速节点同步，但需要较大的下载空间和时间");
 
         if !Confirm::new()
@@ -132,7 +132,7 @@ pub async fn execute(
     // 7. 保存配置
     save_config(&snapshot_choice)?;
 
-    info!("✓ 初始化完成!");
+    info!("初始化完成!");
     info!("运行 'tronctl start' 启动节点");
 
     Ok(())
