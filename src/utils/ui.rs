@@ -11,6 +11,8 @@ pub fn create_download_progress_bar(total_size: u64) -> ProgressBar {
             .expect("Invalid progress bar template")
             .progress_chars("#>-"),
     );
+
+    pb.enable_steady_tick(std::time::Duration::from_millis(100));
     pb
 }
 
