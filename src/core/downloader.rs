@@ -2,10 +2,36 @@ use crate::error::{Result, TronCtlError};
 use crate::utils::ui;
 use futures::StreamExt;
 use reqwest::Client;
-use std::path::Path;
+use serde::{Deserialize, Serialize};
+use std::path::{Path, PathBuf};
 use tokio::fs::File;
-use tokio::io::{AsyncSeekExt, AsyncWriteExt};
+use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
 use tracing::{debug, info, warn};
+
+/// 断点续传进度记录
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct DownloadProgress {
+    url: String,
+    total_size: u64,
+    chunk_size: u64,
+    chunks: Vec<ChunkProgress>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct ChunkProgress {
+    index: usize,
+    start: u64,
+    end: u64,
+    downloaded: u64,
+    status: ChunkStatus,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+enum ChunkStatus {
+    Pending,
+    Downloading,
+    Completed,
+}
 
 pub struct Downloader {
     client: Client,
@@ -109,29 +135,80 @@ impl Downloader {
         }
     }
 
-    /// 单线程下载
+    /// 单线程下载（支持断点续传）
     async fn download_single_thread(
         &self,
         url: &str,
         dest: &Path,
         expected_md5: Option<&str>,
     ) -> Result<()> {
-        let response = self.client.get(url).send().await?;
+        // 检查是否支持断点续传
+        let (resume_pos, total_size) = if dest.exists() {
+            let metadata = tokio::fs::metadata(dest).await?;
+            let existing_size = metadata.len();
 
-        if !response.status().is_success() {
+            let head_response = self.client.head(url).send().await?;
+            if !head_response.status().is_success() {
+                return Err(TronCtlError::DownloadFailed(format!(
+                    "HEAD 请求失败，状态码: {}",
+                    head_response.status()
+                )));
+            }
+
+            let total = head_response.content_length().unwrap_or(0);
+            if existing_size > 0 && existing_size < total {
+                info!("检测到未完成的下载 ({} bytes)，继续下载...", existing_size);
+                (Some(existing_size), total)
+            } else {
+                (None, total)
+            }
+        } else {
+            let head_response = self.client.head(url).send().await?;
+            if !head_response.status().is_success() {
+                return Err(TronCtlError::DownloadFailed(format!(
+                    "HEAD 请求失败，状态码: {}",
+                    head_response.status()
+                )));
+            }
+            (None, head_response.content_length().unwrap_or(0))
+        };
+
+        let pb = ui::create_download_progress_bar(total_size);
+        if let Some(pos) = resume_pos {
+            pb.set_position(pos);
+        }
+
+        let response = if let Some(pos) = resume_pos {
+            let range = format!("bytes={}-", pos);
+            self.client.get(url).header("Range", range).send().await?
+        } else {
+            self.client.get(url).send().await?
+        };
+
+        if !response.status().is_success() && response.status().as_u16() != 206 {
             return Err(TronCtlError::DownloadFailed(format!(
                 "HTTP 状态码: {}",
                 response.status()
             )));
         }
 
-        let total_size = response.content_length().unwrap_or(0);
-        let pb = ui::create_download_progress_bar(total_size);
+        let mut file = File::options()
+            .write(true)
+            .create(true)
+            .truncate(false)
+            .open(dest)
+            .await?;
 
-        let mut file = File::create(dest).await?;
+        if resume_pos.is_some() {
+            file.seek(std::io::SeekFrom::End(0)).await?;
+        }
+
         let mut stream = response.bytes_stream();
-        let mut downloaded: u64 = 0;
-        let mut all_bytes = Vec::new();
+        let mut all_bytes = if resume_pos.is_some() && expected_md5.is_some() {
+            tokio::fs::read(dest).await?
+        } else {
+            Vec::new()
+        };
 
         while let Some(chunk_result) = stream.next().await {
             let chunk = chunk_result?;
@@ -141,8 +218,7 @@ impl Downloader {
                 all_bytes.extend_from_slice(&chunk);
             }
 
-            downloaded += chunk.len() as u64;
-            pb.set_position(downloaded);
+            pb.inc(chunk.len() as u64);
         }
 
         pb.finish_with_message("下载完成");
@@ -164,7 +240,86 @@ impl Downloader {
         Ok(())
     }
 
-    /// 多线程分块下载
+    /// 获取进度文件路径
+    fn progress_file(dest: &Path) -> PathBuf {
+        dest.with_extension("progress")
+    }
+
+    /// 获取分块文件路径
+    fn chunk_file(dest: &Path, index: usize) -> PathBuf {
+        let mut chunk_path = dest.to_path_buf();
+        chunk_path.set_extension(format!("part{}", index));
+        chunk_path
+    }
+
+    /// 加载下载进度
+    async fn load_progress(dest: &Path) -> Result<Option<DownloadProgress>> {
+        let progress_path = Self::progress_file(dest);
+        if !progress_path.exists() {
+            return Ok(None);
+        }
+
+        let content = tokio::fs::read_to_string(&progress_path).await?;
+        let progress: DownloadProgress = serde_json::from_str(&content)
+            .map_err(|e| TronCtlError::Other(anyhow::anyhow!("解析进度文件失败: {}", e)))?;
+
+        Ok(Some(progress))
+    }
+
+    /// 保存下载进度
+    async fn save_progress(dest: &Path, progress: &DownloadProgress) -> Result<()> {
+        let progress_path = Self::progress_file(dest);
+        let content = serde_json::to_string_pretty(progress)
+            .map_err(|e| TronCtlError::Other(anyhow::anyhow!("序列化进度失败: {}", e)))?;
+        tokio::fs::write(&progress_path, content).await?;
+        Ok(())
+    }
+
+    /// 删除进度文件
+    async fn remove_progress(dest: &Path) -> Result<()> {
+        let progress_path = Self::progress_file(dest);
+        if progress_path.exists() {
+            tokio::fs::remove_file(&progress_path).await?;
+        }
+        Ok(())
+    }
+
+    /// 检查分块文件是否已下载完成
+    async fn is_chunk_complete(dest: &Path, chunk: &ChunkProgress) -> Result<bool> {
+        let chunk_path = Self::chunk_file(dest, chunk.index);
+        if !chunk_path.exists() {
+            return Ok(false);
+        }
+
+        let metadata = tokio::fs::metadata(&chunk_path).await?;
+        let expected_size = chunk.end - chunk.start + 1;
+        Ok(metadata.len() == expected_size)
+    }
+
+    /// 合并所有分块文件
+    async fn merge_chunks(dest: &Path, progress: &DownloadProgress) -> Result<()> {
+        let mut dest_file = File::create(dest).await?;
+
+        for chunk in &progress.chunks {
+            let chunk_path = Self::chunk_file(dest, chunk.index);
+            if chunk_path.exists() {
+                let mut chunk_file = File::open(&chunk_path).await?;
+                let mut buffer = vec![0u8; 8192];
+                loop {
+                    let n = chunk_file.read(&mut buffer).await?;
+                    if n == 0 {
+                        break;
+                    }
+                    dest_file.write_all(&buffer[..n]).await?;
+                }
+            }
+        }
+
+        dest_file.flush().await?;
+        Ok(())
+    }
+
+    /// 多线程分块下载（支持断点续传）
     async fn download_multithreaded(
         &self,
         url: &str,
@@ -173,36 +328,67 @@ impl Downloader {
         expected_md5: Option<&str>,
     ) -> Result<()> {
         use std::sync::Arc;
-        use tokio::sync::Mutex;
 
         let num_threads = num_cpus::get();
         let chunk_size = total_size / num_threads as u64;
 
-        let pb = ui::create_download_progress_bar(total_size);
-        let pb = Arc::new(pb);
+        // 尝试加载之前的下载进度
+        let mut progress = if let Some(saved) = Self::load_progress(dest).await? {
+            if saved.url == url && saved.total_size == total_size {
+                info!("检测到未完成的下载，继续下载...");
+                saved
+            } else {
+                info!("下载源或文件大小已变化，重新开始下载");
+                Self::create_initial_progress(url, total_size, num_threads, chunk_size)
+            }
+        } else {
+            Self::create_initial_progress(url, total_size, num_threads, chunk_size)
+        };
 
-        // 创建目标文件并预分配空间
-        let file = File::create(dest).await?;
-        file.set_len(total_size).await?;
-        let file = Arc::new(Mutex::new(file));
+        let pb = Arc::new(ui::create_download_progress_bar(total_size));
+
+        // 计算已下载的字节数
+        let mut downloaded_bytes: u64 = 0;
+        for chunk in &progress.chunks {
+            if chunk.status == ChunkStatus::Completed {
+                downloaded_bytes += chunk.end - chunk.start + 1;
+            }
+        }
+        pb.set_position(downloaded_bytes);
 
         let mut tasks = Vec::new();
 
         for i in 0..num_threads {
-            let start = i as u64 * chunk_size;
-            let end = if i == num_threads - 1 {
-                total_size - 1
-            } else {
-                (i as u64 + 1) * chunk_size - 1
-            };
+            let chunk = &progress.chunks[i];
+
+            // 跳过已完成的分块
+            if chunk.status == ChunkStatus::Completed {
+                let is_complete = Self::is_chunk_complete(dest, chunk).await?;
+                if is_complete {
+                    continue;
+                }
+            }
 
             let client = self.client.clone();
             let url = url.to_string();
-            let file = Arc::clone(&file);
+            let dest = dest.to_path_buf();
             let pb = Arc::clone(&pb);
+            let chunk = chunk.clone();
 
             let task = tokio::spawn(async move {
-                let range = format!("bytes={}-{}", start, end);
+                let chunk_path = Self::chunk_file(&dest, chunk.index);
+
+                // 检查是否已有部分下载
+                let start_pos = if chunk_path.exists() {
+                    let metadata = tokio::fs::metadata(&chunk_path).await?;
+                    metadata.len()
+                } else {
+                    0
+                };
+
+                let range_start = chunk.start + start_pos;
+                let range = format!("bytes={}-{}", range_start, chunk.end);
+
                 let response = client
                     .get(&url)
                     .header("Range", range)
@@ -210,7 +396,6 @@ impl Downloader {
                     .await
                     .map_err(|e| TronCtlError::DownloadFailed(format!("分块下载失败: {}", e)))?;
 
-                // 206 Partial Content 或 200 OK 都可以接受
                 if !response.status().is_success() && response.status().as_u16() != 206 {
                     return Err(TronCtlError::DownloadFailed(format!(
                         "分块下载失败，状态码: {}",
@@ -218,40 +403,72 @@ impl Downloader {
                     )));
                 }
 
+                let mut chunk_file = File::options()
+                    .write(true)
+                    .create(true)
+                    .truncate(false)
+                    .open(&chunk_path)
+                    .await?;
+
+                if start_pos > 0 {
+                    chunk_file.seek(std::io::SeekFrom::End(0)).await?;
+                }
+
                 let mut stream = response.bytes_stream();
-                let mut position = start;
 
                 while let Some(chunk_result) = stream.next().await {
-                    let chunk = chunk_result.map_err(|e| {
+                    let data = chunk_result.map_err(|e| {
                         TronCtlError::DownloadFailed(format!("读取数据块失败: {}", e))
                     })?;
 
-                    let mut file = file.lock().await;
-                    file.seek(std::io::SeekFrom::Start(position)).await?;
-                    file.write_all(&chunk).await?;
-                    drop(file);
-
-                    position += chunk.len() as u64;
-                    pb.inc(chunk.len() as u64);
+                    chunk_file.write_all(&data).await?;
+                    pb.inc(data.len() as u64);
                 }
+
+                chunk_file.flush().await?;
 
                 Ok::<(), TronCtlError>(())
             });
 
-            tasks.push(task);
+            tasks.push((i, task));
         }
 
         // 等待所有分块下载完成
-        for task in tasks {
-            task.await
-                .map_err(|e| TronCtlError::Other(anyhow::anyhow!("下载任务失败: {}", e)))??;
+        for (index, task) in tasks {
+            match task.await {
+                Ok(Ok(())) => {
+                    progress.chunks[index].status = ChunkStatus::Completed;
+                    Self::save_progress(dest, &progress).await?;
+                }
+                Ok(Err(e)) => {
+                    progress.chunks[index].status = ChunkStatus::Pending;
+                    Self::save_progress(dest, &progress).await?;
+                    return Err(e);
+                }
+                Err(e) => {
+                    progress.chunks[index].status = ChunkStatus::Pending;
+                    Self::save_progress(dest, &progress).await?;
+                    return Err(TronCtlError::Other(anyhow::anyhow!("下载任务失败: {}", e)));
+                }
+            }
         }
 
         pb.finish_with_message("下载完成");
 
-        let mut file = file.lock().await;
-        file.flush().await?;
-        drop(file);
+        // 合并所有分块文件
+        info!("合并分块文件...");
+        Self::merge_chunks(dest, &progress).await?;
+
+        // 清理分块文件
+        for chunk in &progress.chunks {
+            let chunk_path = Self::chunk_file(dest, chunk.index);
+            if chunk_path.exists() {
+                tokio::fs::remove_file(&chunk_path).await.ok();
+            }
+        }
+
+        // 删除进度文件
+        Self::remove_progress(dest).await?;
 
         // MD5 校验
         if let Some(expected) = expected_md5 {
@@ -268,6 +485,40 @@ impl Downloader {
         }
 
         Ok(())
+    }
+
+    /// 创建初始下载进度
+    fn create_initial_progress(
+        url: &str,
+        total_size: u64,
+        num_threads: usize,
+        chunk_size: u64,
+    ) -> DownloadProgress {
+        let mut chunks = Vec::new();
+
+        for i in 0..num_threads {
+            let start = i as u64 * chunk_size;
+            let end = if i == num_threads - 1 {
+                total_size - 1
+            } else {
+                (i as u64 + 1) * chunk_size - 1
+            };
+
+            chunks.push(ChunkProgress {
+                index: i,
+                start,
+                end,
+                downloaded: 0,
+                status: ChunkStatus::Pending,
+            });
+        }
+
+        DownloadProgress {
+            url: url.to_string(),
+            total_size,
+            chunk_size,
+            chunks,
+        }
     }
 
     /// 获取 HTTP 客户端引用（供其他模块使用）
