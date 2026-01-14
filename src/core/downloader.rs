@@ -144,8 +144,8 @@ impl Downloader {
         dest: &Path,
         expected_md5: Option<&str>,
     ) -> Result<()> {
-        // 检查是否支持断点续传
-        let (resume_pos, total_size) = if dest.exists() {
+        // 检查是否支持断点续传，决定起始位置
+        let resume_pos = if dest.exists() {
             let metadata = tokio::fs::metadata(dest).await?;
             let existing_size = metadata.len();
 
@@ -160,26 +160,15 @@ impl Downloader {
             let total = head_response.content_length().unwrap_or(0);
             if existing_size > 0 && existing_size < total {
                 info!("检测到未完成的下载 ({} bytes)，继续下载...", existing_size);
-                (Some(existing_size), total)
+                Some(existing_size)
             } else {
-                (None, total)
+                None
             }
         } else {
-            let head_response = self.client.head(url).send().await?;
-            if !head_response.status().is_success() {
-                return Err(TronCtlError::DownloadFailed(format!(
-                    "HEAD 请求失败，状态码: {}",
-                    head_response.status()
-                )));
-            }
-            (None, head_response.content_length().unwrap_or(0))
+            None
         };
 
-        let pb = ui::create_download_progress_bar(total_size);
-        if let Some(pos) = resume_pos {
-            pb.set_position(pos);
-        }
-
+        // 发送 GET 请求获取响应（从断点续传位置或从头开始）
         let response = if let Some(pos) = resume_pos {
             let range = format!("bytes={}-", pos);
             self.client.get(url).header("Range", range).send().await?
@@ -192,6 +181,14 @@ impl Downloader {
                 "HTTP 状态码: {}",
                 response.status()
             )));
+        }
+
+        // 从 GET 响应中获取可靠的 content_length
+        let total_size = response.content_length().unwrap_or(0);
+
+        let pb = ui::create_download_progress_bar(total_size);
+        if let Some(pos) = resume_pos {
+            pb.set_position(pos);
         }
 
         let mut file = File::options()
