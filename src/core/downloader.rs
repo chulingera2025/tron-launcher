@@ -41,7 +41,9 @@ impl Downloader {
     pub fn new() -> Self {
         Self {
             client: Client::builder()
-                .timeout(std::time::Duration::from_secs(3600))
+                // 不设置全局超时，允许大文件长时间下载
+                // 只设置连接超时，防止一直连不上服务器
+                .connect_timeout(std::time::Duration::from_secs(60))
                 .user_agent("tronctl/0.1.0")
                 .build()
                 .expect("Failed to build HTTP client"),
@@ -356,6 +358,9 @@ impl Downloader {
         }
         pb.set_position(downloaded_bytes);
 
+        // 保存初始进度，确保可以断点续传
+        Self::save_progress(dest, &progress).await?;
+
         let mut tasks = Vec::new();
 
         for i in 0..num_threads {
@@ -443,12 +448,18 @@ impl Downloader {
                 Ok(Err(e)) => {
                     progress.chunks[index].status = ChunkStatus::Pending;
                     Self::save_progress(dest, &progress).await?;
-                    return Err(e);
+                    return Err(TronCtlError::DownloadFailed(format!(
+                        "下载分块 {} 失败: {}\n\n进度已保存，请重新运行命令继续下载",
+                        index, e
+                    )));
                 }
                 Err(e) => {
                     progress.chunks[index].status = ChunkStatus::Pending;
                     Self::save_progress(dest, &progress).await?;
-                    return Err(TronCtlError::Other(anyhow::anyhow!("下载任务失败: {}", e)));
+                    return Err(TronCtlError::DownloadFailed(format!(
+                        "下载分块 {} 失败: {}\n\n进度已保存，请重新运行命令继续下载",
+                        index, e
+                    )));
                 }
             }
         }
