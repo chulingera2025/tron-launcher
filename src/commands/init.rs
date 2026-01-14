@@ -106,10 +106,10 @@ pub async fn execute(
 
             if verify_md5 {
                 info!("使用 MD5 校验模式（完整下载后解压）");
-                info!("正在下载快照到临时文件...");
+                info!("正在下载快照到本地文件...");
 
-                let temp_file =
-                    PathBuf::from("/tmp").join(format!("tron-snapshot-{}.tgz", metadata.date));
+                let temp_file = PathBuf::from(DATA_DIR)
+                    .join(format!("tron-snapshot-{}.tgz", metadata.date));
 
                 // 完整下载并校验
                 downloader
@@ -121,9 +121,9 @@ pub async fn execute(
                 // 解压
                 extract_snapshot_file(&temp_file, &data_dir).await?;
 
-                // 删除临时文件
+                // 删除压缩文件
                 tokio::fs::remove_file(&temp_file).await?;
-                info!("临时文件已清理");
+                info!("压缩文件已清理");
             } else {
                 info!("使用流式解压模式（无 MD5 校验）");
                 info!("正在流式下载并解压，请耐心等待...");
@@ -295,22 +295,20 @@ async fn extract_snapshot_file(archive_path: &Path, dest_dir: &Path) -> Result<(
             // 4. 验证解压路径确实在目标目录内
             let path_to_check = if full_path.exists() {
                 full_path.canonicalize()?
-            } else if let Some(parent) = full_path.parent() {
-                std::fs::create_dir_all(parent)?;
-                let parent_canonical = parent.canonicalize()?;
-                if let Some(file_name) = full_path.file_name() {
-                    parent_canonical.join(file_name)
+            } else {
+                // 确保父目录存在
+                if let Some(parent) = full_path.parent() {
+                    std::fs::create_dir_all(parent)?;
+                }
+                // 对于不存在的文件，验证其父目录在目标目录内
+                if let Some(parent) = full_path.parent() {
+                    parent.canonicalize()?
                 } else {
                     return Err(std::io::Error::new(
                         std::io::ErrorKind::InvalidInput,
                         "无效的文件路径",
                     ));
                 }
-            } else {
-                return Err(std::io::Error::new(
-                    std::io::ErrorKind::InvalidInput,
-                    "无效的文件路径",
-                ));
             };
 
             // 确保路径在目标目录内

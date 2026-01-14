@@ -618,28 +618,26 @@ impl Downloader {
                 let full_path = dest_dir.join(&path);
 
                 // 4. 验证解压路径确实在目标目录内
-                // 对于尚不存在的文件，验证其父目录
                 let path_to_check = if full_path.exists() {
                     full_path.canonicalize().map_err(|e| {
                         std::io::Error::other(format!("无法规范化路径 {:?}: {}", full_path, e))
                     })?
-                } else if let Some(parent) = full_path.parent() {
+                } else {
                     // 确保父目录存在
-                    std::fs::create_dir_all(parent)?;
-                    let parent_canonical = parent.canonicalize()?;
-                    if let Some(file_name) = full_path.file_name() {
-                        parent_canonical.join(file_name)
+                    if let Some(parent) = full_path.parent() {
+                        std::fs::create_dir_all(parent)?;
+                    }
+                    // 对于不存在的文件，验证其父目录在目标目录内
+                    if let Some(parent) = full_path.parent() {
+                        parent.canonicalize().map_err(|e| {
+                            std::io::Error::other(format!("无法规范化父目录: {}", e))
+                        })?
                     } else {
                         return Err(std::io::Error::new(
                             std::io::ErrorKind::InvalidInput,
                             "无效的文件路径",
                         ));
                     }
-                } else {
-                    return Err(std::io::Error::new(
-                        std::io::ErrorKind::InvalidInput,
-                        "无效的文件路径",
-                    ));
                 };
 
                 // 确保路径在目标目录内
