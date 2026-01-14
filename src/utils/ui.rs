@@ -4,7 +4,10 @@ pub fn create_download_progress_bar(total_size: u64) -> ProgressBar {
     let pb = ProgressBar::new(total_size);
     pb.set_style(
         ProgressStyle::default_bar()
-            .template("{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {bytes}/{total_bytes} ({eta})")
+            .template(
+                "{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] \
+                 {bytes}/{total_bytes} ({bytes_per_sec}, {eta})",
+            )
             .expect("Invalid progress bar template")
             .progress_chars("#>-"),
     );
