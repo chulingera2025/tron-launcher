@@ -60,7 +60,7 @@ fn generate_service_file(config: &TronCtlConfig) -> String {
         User=root
         WorkingDirectory={DATA_DIR}
         Environment="JAVA_OPTS={jvm_opts}"
-        ExecStart=/usr/bin/java $JAVA_OPTS -jar {fullnode_jar} -c {node_config} -d {data_dir} --delay-monitor
+        ExecStart=/usr/bin/java $JAVA_OPTS -jar {fullnode_jar} -c {node_config} -d {data_dir}
         ExecStop=/usr/bin/kill -SIGTERM $MAINPID
         Restart=on-failure
         RestartSec=10
@@ -112,7 +112,6 @@ mod tests {
         assert!(service.contains("PrivateTmp=true"));
         assert!(service.contains("ProtectSystem=full"));
         assert!(service.contains("LimitNOFILE=1048576"));
-        assert!(service.contains("--delay-monitor"));
         assert!(service.contains("$JAVA_OPTS"));
     }
 
