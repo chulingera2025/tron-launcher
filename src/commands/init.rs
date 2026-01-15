@@ -110,8 +110,8 @@ pub async fn execute(
                 info!("使用 MD5 校验模式（完整下载后解压）");
                 info!("正在下载快照到本地文件...");
 
-                let temp_file = PathBuf::from(DATA_DIR)
-                    .join(format!("tron-snapshot-{}.tgz", metadata.date));
+                let temp_file =
+                    PathBuf::from(DATA_DIR).join(format!("tron-snapshot-{}.tgz", metadata.date));
 
                 // 完整下载并校验
                 downloader
