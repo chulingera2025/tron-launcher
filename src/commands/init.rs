@@ -7,6 +7,8 @@ use dialoguer::{Confirm, Input, Select};
 use std::path::{Path, PathBuf};
 use tracing::{info, warn};
 
+use super::systemd;
+
 pub async fn execute(
     snapshot_type: Option<String>,
     version: Option<String>,
@@ -178,8 +180,17 @@ pub async fn execute(
     // 8. 保存配置
     save_config(&snapshot_choice, &jvm_min_heap, &jvm_max_heap)?;
 
+    // 9. 生成 systemd 服务文件
+    info!("生成 systemd 服务文件...");
+    systemd::execute(false).await?;
+
     info!("初始化完成!");
-    info!("运行 'tronctl start' 启动节点");
+    info!("运行以下命令启用并启动服务:");
+    info!("  sudo systemctl daemon-reload");
+    info!("  sudo systemctl enable java-tron");
+    info!("  sudo systemctl start java-tron");
+    info!("\n或者使用 tronctl 手动管理:");
+    info!("  tronctl start --daemon");
 
     Ok(())
 }

@@ -42,6 +42,8 @@ async fn main() -> anyhow::Result<()> {
         cli::Commands::Logs { follow, lines } => commands::logs::execute(follow, lines).await,
 
         cli::Commands::Clean { yes } => commands::clean::execute(yes).await,
+
+        cli::Commands::Systemd { force } => commands::systemd::execute(force).await,
     };
 
     if let Err(e) = result {

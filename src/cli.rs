@@ -71,4 +71,11 @@ pub enum Commands {
         #[arg(short = 'y', long)]
         yes: bool,
     },
+
+    /// 生成 systemd 服务文件
+    Systemd {
+        /// 强制覆盖已存在的服务文件
+        #[arg(short, long)]
+        force: bool,
+    },
 }
