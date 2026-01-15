@@ -44,6 +44,7 @@ pub async fn execute(force: bool) -> Result<()> {
 fn generate_service_file(config: &TronCtlConfig) -> String {
     let fullnode_jar = config.fullnode_jar.to_string_lossy();
     let node_config = config.node_config.to_string_lossy();
+    let data_dir = config.data_dir.to_string_lossy();
     let jvm_opts = format!("-Xms{} -Xmx{}", config.jvm_min_heap, config.jvm_max_heap);
 
     indoc::formatdoc!(
@@ -59,7 +60,7 @@ fn generate_service_file(config: &TronCtlConfig) -> String {
         User=root
         WorkingDirectory={DATA_DIR}
         Environment="JAVA_OPTS={jvm_opts}"
-        ExecStart=/usr/bin/java $JAVA_OPTS -jar {fullnode_jar} -c {node_config} --delay-monitor
+        ExecStart=/usr/bin/java $JAVA_OPTS -jar {fullnode_jar} -c {node_config} -d {data_dir} --delay-monitor
         ExecStop=/usr/bin/kill -SIGTERM $MAINPID
         Restart=on-failure
         RestartSec=10
